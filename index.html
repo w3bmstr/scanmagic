@@ -133,33 +133,34 @@
     #home {
       justify-content: center;
       align-items: center;
-      padding: 24px;
+      padding: 20px 16px;
       text-align: center;
       background: radial-gradient(ellipse at 50% 30%, #1e293b 0%, var(--bg) 70%);
+      overflow-y: auto;
     }
     #home .logo {
-      width: 88px;
-      height: 88px;
-      border-radius: 22px;
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
       background: linear-gradient(135deg, #3b82f6, #8b5cf6);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2.5rem;
-      margin-bottom: 20px;
+      font-size: 2rem;
+      margin-bottom: 12px;
       box-shadow: 0 12px 40px rgba(59, 130, 246, 0.35);
     }
     #home h1 {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     #home p {
       color: var(--muted);
-      font-size: 0.95rem;
-      max-width: 280px;
+      font-size: 0.88rem;
+      max-width: 300px;
       line-height: 1.45;
-      margin-bottom: 32px;
+      margin-bottom: 16px;
     }
     #home .actions {
       display: flex;
@@ -472,6 +473,141 @@
       z-index: 4;
     }
     #btnUndo:not(:disabled) { opacity: 1 !important; }
+
+    /* Scan modes */
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      width: 100%;
+      max-width: 340px;
+      margin-bottom: 20px;
+    }
+    .mode-card {
+      flex-direction: column;
+      gap: 4px;
+      padding: 12px 6px;
+      background: var(--surface2);
+      border-radius: 12px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      border: 2px solid transparent;
+    }
+    .mode-card span { font-size: 1.4rem; }
+    .mode-card.active {
+      border-color: var(--accent);
+      color: var(--text);
+      background: #1e3a5f;
+    }
+
+    .pages-preview {
+      margin-top: 16px;
+      width: 100%;
+      max-width: 340px;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0;
+    }
+    .page-thumb {
+      width: 56px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 2px solid var(--surface2);
+      flex-shrink: 0;
+      background: #222;
+    }
+
+    /* OCR panel */
+    #ocrPanel {
+      display: none;
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 140px;
+      max-height: 40%;
+      background: var(--surface);
+      border: 1px solid #2a2a32;
+      border-radius: 14px;
+      padding: 12px;
+      z-index: 20;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    #ocrPanel.visible { display: flex; }
+    #ocrPanel h3 { font-size: 0.9rem; }
+    #ocrText {
+      flex: 1;
+      overflow: auto;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: var(--text);
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 80px;
+      max-height: 180px;
+      white-space: pre-wrap;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    #ocrPanel .ocr-actions { display: flex; gap: 8px; }
+    #ocrPanel .ocr-actions .btn { flex: 1; padding: 10px; font-size: 0.85rem; }
+
+    .annotate-panel {
+      display: none;
+      padding: 0 12px 8px;
+      gap: 8px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .annotate-panel.visible { display: flex; }
+    .color-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid #444;
+    }
+    .color-dot.active { border-color: #fff; transform: scale(1.15); }
+
+    .export-panel {
+      display: none;
+      padding: 0 12px 8px;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .export-panel.visible { display: flex; }
+    .export-panel .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+    }
+    .chip-btn {
+      padding: 8px 14px;
+      background: var(--surface2);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .chip-btn.active { background: var(--accent); color: #fff; }
+
+    #pagesBar {
+      display: none;
+      padding: 6px 8px;
+      gap: 6px;
+      overflow-x: auto;
+      background: var(--bg);
+      border-top: 1px solid #2a2a32;
+      justify-content: center;
+      align-items: center;
+    }
+    #pagesBar.visible { display: flex; }
   </style>
 </head>
 <body>
@@ -480,11 +616,19 @@
     <div id="home" class="screen active">
       <div class="logo">📄</div>
       <h1>ScanMagic</h1>
-      <p>Capture documents, enhance them, and erase unwanted marks — all on your phone.</p>
-      <div class="actions">
-        <button class="btn" id="btnStartCamera">📷 Scan Document</button>
-        <button class="btn btn-secondary" id="btnPickFile">🖼️ Choose from Gallery</button>
+      <p>Scan documents, receipts, cards, whiteboards &amp; more — with OCR and multi-page PDF.</p>
+      <div class="mode-grid" id="modeGrid">
+        <button class="mode-card active" data-mode="document"><span>📄</span>Document</button>
+        <button class="mode-card" data-mode="receipt"><span>🧾</span>Receipt</button>
+        <button class="mode-card" data-mode="card"><span>💳</span>Business Card</button>
+        <button class="mode-card" data-mode="whiteboard"><span>🗒️</span>Whiteboard</button>
+        <button class="mode-card" data-mode="photo"><span>🖼️</span>Photo</button>
       </div>
+      <div class="actions">
+        <button class="btn" id="btnStartCamera">📷 Scan</button>
+        <button class="btn btn-secondary" id="btnPickFile">🖼️ From Gallery</button>
+      </div>
+      <div id="pagesPreview" class="pages-preview" style="display:none;"></div>
       <input type="file" id="fileInput" accept="image/*" capture="environment" hidden />
     </div>
 
@@ -527,12 +671,33 @@
           <label>Size</label>
           <input type="range" id="eraserSize" min="10" max="100" value="36" />
         </div>
+        <div class="annotate-panel" id="annotatePanel">
+          <button class="color-dot active" data-color="#ef4444" style="background:#ef4444"></button>
+          <button class="color-dot" data-color="#3b82f6" style="background:#3b82f6"></button>
+          <button class="color-dot" data-color="#22c55e" style="background:#22c55e"></button>
+          <button class="color-dot" data-color="#000000" style="background:#000"></button>
+          <button class="color-dot" data-color="#fbbf24" style="background:#fbbf24"></button>
+          <label style="font-size:0.75rem;color:var(--muted)">Size</label>
+          <input type="range" id="penSize" min="2" max="24" value="4" style="width:80px;accent-color:var(--accent)" />
+        </div>
         <div class="filter-panel" id="filterPanel">
           <button class="filter-chip active" data-filter="original">Original</button>
           <button class="filter-chip" data-filter="enhance">Enhance</button>
           <button class="filter-chip" data-filter="grayscale">Grayscale</button>
           <button class="filter-chip" data-filter="bw">B&amp;W</button>
           <button class="filter-chip" data-filter="contrast">High Contrast</button>
+          <button class="filter-chip" data-filter="whiteboard">Whiteboard</button>
+        </div>
+        <div class="export-panel" id="exportPanel">
+          <div class="row">
+            <button class="chip-btn active" data-quality="0.92">High</button>
+            <button class="chip-btn" data-quality="0.75">Medium</button>
+            <button class="chip-btn" data-quality="0.5">Small</button>
+          </div>
+          <div class="row">
+            <button class="btn" id="btnExportJpg" style="flex:1;max-width:140px;padding:12px">📷 JPEG</button>
+            <button class="btn btn-secondary" id="btnExportPdf" style="flex:1;max-width:140px;padding:12px">📑 PDF</button>
+          </div>
         </div>
         <div class="tool-row" id="toolRow">
           <button class="tool-btn active" data-tool="move" title="Pan / View">
@@ -541,17 +706,26 @@
           <button class="tool-btn" data-tool="crop" title="Crop">
             <span class="icon">⬚</span> Crop
           </button>
-          <button class="tool-btn" data-tool="flatten" title="Flatten – tap 4 corners">
+          <button class="tool-btn" data-tool="flatten" title="Flatten">
             <span class="icon">📐</span> Flatten
           </button>
-          <button class="tool-btn" data-tool="eraser" title="Magic Eraser – matches background">
+          <button class="tool-btn" data-tool="eraser" title="Magic Eraser">
             <span class="icon">✨</span> Eraser
           </button>
-          <button class="tool-btn" data-tool="autofix" title="Auto Fix – clean bg, keep text dark">
+          <button class="tool-btn" data-tool="annotate" title="Markup">
+            <span class="icon">✏️</span> Markup
+          </button>
+          <button class="tool-btn" data-tool="autofix" title="Auto Fix">
             <span class="icon">🪄</span> Auto Fix
           </button>
-          <button class="tool-btn" data-tool="deblur" title="Deblur – sharpen soft text">
+          <button class="tool-btn" data-tool="heal" title="Heal folds & tears – fill with paper color">
+            <span class="icon">🩹</span> Heal
+          </button>
+          <button class="tool-btn" data-tool="deblur" title="Deblur">
             <span class="icon">🔍</span> Deblur
+          </button>
+          <button class="tool-btn" data-tool="ocr" title="OCR – extract text">
+            <span class="icon">🔤</span> OCR
           </button>
           <button class="tool-btn" data-tool="filter" title="Filters">
             <span class="icon">🎨</span> Filters
@@ -559,13 +733,26 @@
           <button class="tool-btn" data-tool="rotate" title="Rotate">
             <span class="icon">↻</span> Rotate
           </button>
+          <button class="tool-btn" data-tool="export" title="Export">
+            <span class="icon">💾</span> Export
+          </button>
         </div>
+        <div id="pagesBar"></div>
         <div class="action-row">
           <button class="btn btn-secondary" id="btnApplyCrop" style="display:none">Apply Crop</button>
           <button class="btn btn-secondary" id="btnApplyFlatten" style="display:none">Apply Flatten</button>
-          <button class="btn" id="btnSave">💾 Save Image</button>
+          <button class="btn btn-secondary" id="btnAddPage" title="Add page to document">＋ Page</button>
+          <button class="btn" id="btnSave">💾 Save</button>
         </div>
         <div id="measureBar" style="display:none;padding:6px 14px 10px;font-size:0.8rem;color:var(--muted);text-align:center;"></div>
+      </div>
+      <div id="ocrPanel">
+        <h3>Extracted text</h3>
+        <div id="ocrText">Running OCR…</div>
+        <div class="ocr-actions">
+          <button class="btn btn-secondary" id="btnCopyOcr">Copy</button>
+          <button class="btn" id="btnCloseOcr">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -573,9 +760,11 @@
   <div id="toast"></div>
   <div id="loading">
     <div class="spinner"></div>
-    <span>Processing…</span>
+    <span id="loadingMsg">Processing…</span>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script>
     // ========== State ==========
     const state = {
@@ -599,9 +788,15 @@
       panStart: null,
       flattenPoints: [],
       measuredSize: null,
-      history: [],          // undo stack of baseImageData clones
+      history: [],
       maxHistory: 15,
-      dragCornerIndex: -1
+      dragCornerIndex: -1,
+      scanMode: "document",
+      pages: [],            // { dataUrl, width, height }[]
+      penColor: "#ef4444",
+      penSize: 4,
+      exportQuality: 0.92,
+      isAnnotating: false
     };
 
     // ========== DOM ==========
@@ -796,14 +991,24 @@
           const v = gray > 140 ? 255 : 0;
           r = g = b = v;
         } else if (filter === "enhance" || filter === "contrast") {
-          // simple contrast + slight brightness
           const factor = filter === "contrast" ? 1.45 : 1.25;
           const intercept = 128 * (1 - factor);
           r = clamp(r * factor + intercept + 8);
           g = clamp(g * factor + intercept + 8);
           b = clamp(b * factor + intercept + 8);
+        } else if (filter === "whiteboard") {
+          // boost whites, crush mid grays for marker boards
+          const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (gray > 160) {
+            r = g = b = 255;
+          } else {
+            const factor = 1.5;
+            const intercept = 128 * (1 - factor);
+            r = clamp(r * factor + intercept);
+            g = clamp(g * factor + intercept);
+            b = clamp(b * factor + intercept);
+          }
         }
-        // original: leave as-is
 
         d[i] = r;
         d[i + 1] = g;
@@ -869,6 +1074,14 @@
         runDeblur();
         return;
       }
+      if (tool === "heal") {
+        runHeal();
+        return;
+      }
+      if (tool === "ocr") {
+        runOCR();
+        return;
+      }
       // clear flatten UI when leaving
       if (state.tool === "flatten" && tool !== "flatten") {
         clearFlattenMarkers();
@@ -882,6 +1095,8 @@
       });
       eraserPanel.classList.toggle("visible", tool === "eraser");
       filterPanel.classList.toggle("visible", tool === "filter");
+      $("annotatePanel").classList.toggle("visible", tool === "annotate");
+      $("exportPanel").classList.toggle("visible", tool === "export");
       $("btnApplyCrop").style.display = tool === "crop" ? "block" : "none";
       $("btnApplyFlatten").style.display = tool === "flatten" ? "block" : "none";
 
@@ -927,7 +1142,8 @@
       }
 
       canvas.style.cursor =
-        tool === "eraser" || tool === "crop" || tool === "flatten" ? "crosshair" : "grab";
+        tool === "eraser" || tool === "crop" || tool === "flatten" || tool === "annotate"
+          ? "crosshair" : "grab";
     }
 
     function clearFlattenMarkers() {
@@ -1323,6 +1539,173 @@
           toast("Auto Fix failed");
         } finally {
           showLoading(false);
+        }
+      }, 40);
+    }
+
+    // ========== Heal folds & tears (fill with matching paper/bg color) ==========
+    function runHeal() {
+      if (!state.baseImageData) {
+        toast("No image loaded");
+        return;
+      }
+      pushHistory();
+      showLoading(true);
+      $("loadingMsg").textContent = "Healing folds & tears…";
+      setTimeout(() => {
+        try {
+          const src = state.baseImageData;
+          const { width: w, height: h, data } = src;
+          const paper = estimatePaperColor(src);
+          const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
+
+          // Working buffers (float for smooth blending)
+          let cur = new Float32Array(w * h * 3);
+          for (let i = 0, p = 0; i < data.length; i += 4, p += 3) {
+            cur[p] = data[i];
+            cur[p + 1] = data[i + 1];
+            cur[p + 2] = data[i + 2];
+          }
+
+          // Text should stay: dark AND local contrast high
+          const isLikelyText = new Uint8Array(w * h);
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const p = (y * w + x) * 3;
+              const lum = 0.299 * cur[p] + 0.587 * cur[p + 1] + 0.114 * cur[p + 2];
+              if (lum > paperLum - 50) continue;
+              // local range
+              let minL = 255, maxL = 0;
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  const q = ((y + dy) * w + (x + dx)) * 3;
+                  const l = 0.299 * cur[q] + 0.587 * cur[q + 1] + 0.114 * cur[q + 2];
+                  if (l < minL) minL = l;
+                  if (l > maxL) maxL = l;
+                }
+              }
+              // sharp dark edge → text; soft dark → fold/shadow/tear
+              if (maxL - minL > 55 && lum < paperLum - 70) {
+                isLikelyText[y * w + x] = 1;
+              }
+            }
+          }
+
+          // Several inpainting passes: replace damage with local paper-colored neighbors
+          const passes = 4;
+          const radius = 3;
+          for (let pass = 0; pass < passes; pass++) {
+            const next = new Float32Array(cur);
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const idx = y * w + x;
+                if (isLikelyText[idx]) continue;
+
+                const p = idx * 3;
+                const lum = 0.299 * cur[p] + 0.587 * cur[p + 1] + 0.114 * cur[p + 2];
+
+                // Candidate damage: darker than paper (fold shadow, dirt, tear interior)
+                // or near-edge missing/dark strips
+                const edgeDist = Math.min(x, y, w - 1 - x, h - 1 - y);
+                const nearEdge = edgeDist < Math.min(w, h) * 0.08;
+                const darkGap = lum < paperLum - 18;
+                if (!darkGap && !nearEdge) continue;
+                if (lum > paperLum - 5) continue;
+
+                // Sample healthy (bright/paper-like) neighbors in a ring
+                let rSum = 0, gSum = 0, bSum = 0, wSum = 0;
+                let brightCount = 0;
+                for (let dy = -radius; dy <= radius; dy++) {
+                  for (let dx = -radius; dx <= radius; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const xx = x + dx, yy = y + dy;
+                    if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+                    const nidx = yy * w + xx;
+                    if (isLikelyText[nidx]) continue;
+                    const np = nidx * 3;
+                    const nl = 0.299 * cur[np] + 0.587 * cur[np + 1] + 0.114 * cur[np + 2];
+                    // Prefer paper-bright neighbors
+                    if (nl < paperLum - 25) continue;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const weight = (nl / 255) / dist;
+                    rSum += cur[np] * weight;
+                    gSum += cur[np + 1] * weight;
+                    bSum += cur[np + 2] * weight;
+                    wSum += weight;
+                    brightCount++;
+                  }
+                }
+
+                if (wSum < 0.01 || brightCount < 3) {
+                  // fall back to global paper color for true holes / tears
+                  if (lum < paperLum - 30) {
+                    const t = 0.55 + pass * 0.1;
+                    next[p] = cur[p] * (1 - t) + paper.r * t;
+                    next[p + 1] = cur[p + 1] * (1 - t) + paper.g * t;
+                    next[p + 2] = cur[p + 2] * (1 - t) + paper.b * t;
+                  }
+                  continue;
+                }
+
+                const fr = rSum / wSum;
+                const fg = gSum / wSum;
+                const fb = bSum / wSum;
+                // Stronger blend on darker damage / later passes grow the fill
+                const strength = Math.min(0.95, 0.4 + (paperLum - lum) / paperLum * 0.5 + pass * 0.08);
+                next[p] = cur[p] * (1 - strength) + fr * strength;
+                next[p + 1] = cur[p + 1] * (1 - strength) + fg * strength;
+                next[p + 2] = cur[p + 2] * (1 - strength) + fb * strength;
+              }
+            }
+            cur = next;
+          }
+
+          // Soften residual fold lines: thin dark ridges between paper
+          const out = new ImageData(w, h);
+          const d = out.data;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const idx = y * w + x;
+              const p = idx * 3;
+              let r = cur[p], g = cur[p + 1], b = cur[p + 2];
+              if (!isLikelyText[idx] && x > 0 && x < w - 1 && y > 0 && y < h - 1) {
+                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                const left = (y * w + (x - 1)) * 3;
+                const right = (y * w + (x + 1)) * 3;
+                const up = ((y - 1) * w + x) * 3;
+                const down = ((y + 1) * w + x) * 3;
+                const lL = 0.299 * cur[left] + 0.587 * cur[left + 1] + 0.114 * cur[left + 2];
+                const lR = 0.299 * cur[right] + 0.587 * cur[right + 1] + 0.114 * cur[right + 2];
+                const lU = 0.299 * cur[up] + 0.587 * cur[up + 1] + 0.114 * cur[up + 2];
+                const lD = 0.299 * cur[down] + 0.587 * cur[down + 1] + 0.114 * cur[down + 2];
+                // thin dark line: neighbors brighter on both sides
+                if (lum < paperLum - 15 && lL > lum + 12 && lR > lum + 12) {
+                  r = (cur[left] + cur[right]) / 2;
+                  g = (cur[left + 1] + cur[right + 1]) / 2;
+                  b = (cur[left + 2] + cur[right + 2]) / 2;
+                } else if (lum < paperLum - 15 && lU > lum + 12 && lD > lum + 12) {
+                  r = (cur[up] + cur[down]) / 2;
+                  g = (cur[up + 1] + cur[down + 1]) / 2;
+                  b = (cur[up + 2] + cur[down + 2]) / 2;
+                }
+              }
+              const i = idx * 4;
+              d[i] = clamp(r);
+              d[i + 1] = clamp(g);
+              d[i + 2] = clamp(b);
+              d[i + 3] = 255;
+            }
+          }
+
+          state.baseImageData = out;
+          applyFilterAndDraw();
+          toast("Healed – folds & tears filled with paper color");
+        } catch (err) {
+          console.error(err);
+          toast("Heal failed");
+        } finally {
+          showLoading(false);
+          $("loadingMsg").textContent = "Processing…";
         }
       }, 40);
     }
@@ -1742,22 +2125,62 @@
       chip.addEventListener("click", () => setFilter(chip.dataset.filter));
     });
 
+    function annotateAt(x0, y0, x1, y1) {
+      if (!state.baseImageData) return;
+      const size = parseInt($("penSize").value, 10) || state.penSize;
+      ctx.save();
+      ctx.strokeStyle = state.penColor;
+      ctx.fillStyle = state.penColor;
+      ctx.lineWidth = size;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x1, y1, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // sync image data from canvas
+      state.currentImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // also burn into base so filters later keep markup
+      const b = state.baseImageData.data;
+      const c = state.currentImageData.data;
+      // only update stroked region roughly
+      const minX = Math.max(0, Math.floor(Math.min(x0, x1) - size - 1));
+      const maxX = Math.min(canvas.width - 1, Math.ceil(Math.max(x0, x1) + size + 1));
+      const minY = Math.max(0, Math.floor(Math.min(y0, y1) - size - 1));
+      const maxY = Math.min(canvas.height - 1, Math.ceil(Math.max(y0, y1) + size + 1));
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const i = (y * canvas.width + x) * 4;
+          b[i] = c[i]; b[i + 1] = c[i + 1]; b[i + 2] = c[i + 2]; b[i + 3] = c[i + 3];
+        }
+      }
+    }
+
     // Pointer events on canvas
     function onPointerDown(e) {
       e.preventDefault();
       const pos = getCanvasPos(e);
       if (state.tool === "eraser") {
-        pushHistory(); // one undo step per stroke
+        pushHistory();
         state.isDrawing = true;
         eraseAt(pos.x, pos.y);
         state.lastX = pos.x;
         state.lastY = pos.y;
+      } else if (state.tool === "annotate") {
+        pushHistory();
+        state.isDrawing = true;
+        state.lastX = pos.x;
+        state.lastY = pos.y;
+        annotateAt(pos.x, pos.y, pos.x, pos.y);
       } else if (state.tool === "crop") {
         state.cropStart = pos;
         state.cropRect = { x: pos.x, y: pos.y, w: 0, h: 0 };
       } else if (state.tool === "flatten") {
         if (state.flattenPoints.length >= 4) {
-          // restart
           state.flattenPoints = [];
           clearFlattenMarkers();
         }
@@ -1775,7 +2198,6 @@
       e.preventDefault();
       const pos = getCanvasPos(e);
 
-      // dragging a flatten corner
       if (state.dragCornerIndex >= 0 && state.tool === "flatten") {
         const i = state.dragCornerIndex;
         state.flattenPoints[i] = {
@@ -1783,7 +2205,6 @@
           y: Math.max(0, Math.min(canvas.height, pos.y))
         };
         refreshFlattenUI();
-        // re-capture after refresh destroyed the old dot – use global move
         return;
       }
 
@@ -1798,6 +2219,10 @@
           const t = i / steps;
           eraseAt(state.lastX + dx * t, state.lastY + dy * t);
         }
+        state.lastX = pos.x;
+        state.lastY = pos.y;
+      } else if (state.tool === "annotate" && state.isDrawing) {
+        annotateAt(state.lastX, state.lastY, pos.x, pos.y);
         state.lastX = pos.x;
         state.lastY = pos.y;
       } else if (state.tool === "crop" && state.cropStart) {
@@ -1852,32 +2277,235 @@
 
     $("btnUndo").addEventListener("click", undo);
 
-    // ========== Save ==========
-    function saveImage() {
+    // ========== Scan modes ==========
+    document.querySelectorAll(".mode-card").forEach(card => {
+      card.addEventListener("click", () => {
+        document.querySelectorAll(".mode-card").forEach(c => c.classList.remove("active"));
+        card.classList.add("active");
+        state.scanMode = card.dataset.mode;
+        // preset filter hints
+        if (state.scanMode === "whiteboard") state.filter = "whiteboard";
+        else if (state.scanMode === "receipt") state.filter = "enhance";
+        else if (state.scanMode === "card") state.filter = "enhance";
+        else state.filter = "original";
+        toast(card.textContent.trim() + " mode");
+      });
+    });
+
+    // Annotate colors
+    document.querySelectorAll(".color-dot").forEach(dot => {
+      dot.addEventListener("click", () => {
+        document.querySelectorAll(".color-dot").forEach(d => d.classList.remove("active"));
+        dot.classList.add("active");
+        state.penColor = dot.dataset.color;
+      });
+    });
+
+    // Quality chips
+    document.querySelectorAll("[data-quality]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll("[data-quality]").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        state.exportQuality = parseFloat(chip.dataset.quality);
+      });
+    });
+
+    // ========== Multi-page ==========
+    function getCurrentDataUrl(quality) {
+      return canvas.toDataURL("image/jpeg", quality || state.exportQuality);
+    }
+
+    function addCurrentAsPage() {
       if (!canvas.width) return;
+      const dataUrl = getCurrentDataUrl(0.92);
+      state.pages.push({
+        dataUrl,
+        width: canvas.width,
+        height: canvas.height
+      });
+      refreshPagesBar();
+      toast(`Page ${state.pages.length} added`);
+    }
+
+    function refreshPagesBar() {
+      const bar = $("pagesBar");
+      const homePrev = $("pagesPreview");
+      if (!state.pages.length) {
+        bar.classList.remove("visible");
+        bar.innerHTML = "";
+        homePrev.style.display = "none";
+        homePrev.innerHTML = "";
+        return;
+      }
+      bar.classList.add("visible");
+      bar.innerHTML = state.pages.map((p, i) =>
+        `<img class="page-thumb" src="${p.dataUrl}" data-i="${i}" title="Page ${i + 1}" />`
+      ).join("") + `<span style="font-size:0.75rem;color:var(--muted);padding:0 6px">${state.pages.length} page${state.pages.length > 1 ? "s" : ""}</span>`;
+      homePrev.style.display = "flex";
+      homePrev.innerHTML = state.pages.map((p, i) =>
+        `<img class="page-thumb" src="${p.dataUrl}" title="Page ${i + 1}" />`
+      ).join("");
+    }
+
+    $("btnAddPage").addEventListener("click", () => {
+      addCurrentAsPage();
+    });
+
+    // ========== OCR ==========
+    async function runOCR() {
+      if (!canvas.width) return;
+      if (typeof Tesseract === "undefined") {
+        toast("OCR library still loading – try again");
+        return;
+      }
+      $("ocrPanel").classList.add("visible");
+      $("ocrText").textContent = "Recognizing text…";
+      showLoading(true);
+      $("loadingMsg").textContent = "OCR running…";
+      try {
+        const dataUrl = canvas.toDataURL("image/png");
+        const result = await Tesseract.recognize(dataUrl, "eng", {
+          logger: m => {
+            if (m.status === "recognizing text" && m.progress) {
+              $("ocrText").textContent = `Recognizing… ${Math.round(m.progress * 100)}%`;
+            }
+          }
+        });
+        const text = (result.data && result.data.text || "").trim();
+        $("ocrText").textContent = text || "(No text found)";
+        if (state.scanMode === "card" && text) {
+          toast("Business card text extracted");
+        }
+      } catch (err) {
+        console.error(err);
+        $("ocrText").textContent = "OCR failed. Check connection (first run downloads language data).";
+        toast("OCR failed");
+      } finally {
+        showLoading(false);
+        $("loadingMsg").textContent = "Processing…";
+      }
+    }
+
+    $("btnCloseOcr").addEventListener("click", () => {
+      $("ocrPanel").classList.remove("visible");
+    });
+    $("btnCopyOcr").addEventListener("click", async () => {
+      const t = $("ocrText").textContent;
+      try {
+        await navigator.clipboard.writeText(t);
+        toast("Copied to clipboard");
+      } catch {
+        toast("Could not copy");
+      }
+    });
+
+    // ========== Export ==========
+    function saveImage() {
+      // default: JPEG of current page
+      exportJpeg();
+    }
+
+    function exportJpeg() {
+      if (!canvas.width) return;
+      // if multipage, export all as separate files is awkward — export current
       canvas.toBlob((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `scan-${Date.now()}.jpg`;
+        a.download = `scan-${state.scanMode}-${Date.now()}.jpg`;
         a.click();
         URL.revokeObjectURL(url);
-        toast("Saved!");
-      }, "image/jpeg", 0.92);
+        toast("JPEG saved");
+      }, "image/jpeg", state.exportQuality);
+    }
+
+    async function exportPdf() {
+      const api = window.jspdf;
+      if (!api || !api.jsPDF) {
+        toast("PDF library loading – try again in a moment");
+        return;
+      }
+      const { jsPDF } = api;
+
+      let pages = state.pages.slice();
+      if (!pages.length) {
+        if (!canvas.width) {
+          toast("Nothing to export");
+          return;
+        }
+        pages = [{
+          dataUrl: getCurrentDataUrl(state.exportQuality),
+          width: canvas.width,
+          height: canvas.height
+        }];
+      }
+
+      showLoading(true);
+      $("loadingMsg").textContent = "Building PDF…";
+      try {
+        let pdf = null;
+        for (let i = 0; i < pages.length; i++) {
+          const p = pages[i];
+          const w = p.width;
+          const h = p.height;
+          const orient = w >= h ? "l" : "p";
+          if (i === 0) {
+            pdf = new jsPDF({ orientation: orient, unit: "mm", format: "a4" });
+          } else {
+            pdf.addPage("a4", orient);
+          }
+          const pageW = pdf.internal.pageSize.getWidth();
+          const pageH = pdf.internal.pageSize.getHeight();
+          const margin = 8;
+          const maxW = pageW - margin * 2;
+          const maxH = pageH - margin * 2;
+          let pw = maxW;
+          let ph = maxW * (h / w);
+          if (ph > maxH) {
+            ph = maxH;
+            pw = maxH * (w / h);
+          }
+          const x = (pageW - pw) / 2;
+          const y = (pageH - ph) / 2;
+          pdf.addImage(p.dataUrl, "JPEG", x, y, pw, ph);
+        }
+        pdf.save(`scan-${state.scanMode}-${Date.now()}.pdf`);
+        toast(`PDF saved (${pages.length} page${pages.length > 1 ? "s" : ""})`);
+      } catch (err) {
+        console.error(err);
+        toast("PDF export failed");
+      } finally {
+        showLoading(false);
+        $("loadingMsg").textContent = "Processing…";
+      }
+    }
+
+    $("btnExportJpg").addEventListener("click", exportJpeg);
+    $("btnExportPdf").addEventListener("click", exportPdf);
+
+    // Apply mode presets when opening editor
+    function applyModePreset() {
+      if (state.scanMode === "whiteboard") {
+        setFilter("whiteboard");
+      } else if (state.scanMode === "receipt" || state.scanMode === "card") {
+        setFilter("enhance");
+      }
     }
 
     // ========== Open editor ==========
     function openEditor() {
       showScreen("editor");
       setTool("move");
-      setFilter(state.filter || "original");
+      applyModePreset();
+      if (!state.filter) setFilter("original");
+      else setFilter(state.filter);
+      refreshPagesBar();
     }
 
     // Prevent pull-to-refresh / accidental zoom on iOS
     document.addEventListener("gesturestart", (e) => e.preventDefault());
     document.body.addEventListener("touchmove", (e) => {
-      if (e.target.closest(".tool-row, .filter-panel")) return;
-      // allow only inside canvas-wrap for drawing
+      if (e.target.closest(".tool-row, .filter-panel, .annotate-panel, .export-panel, #ocrPanel")) return;
     }, { passive: false });
   </script>
 </body>
