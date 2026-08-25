@@ -414,17 +414,62 @@
       to { transform: rotate(360deg); }
     }
 
-    /* Crop handles (simple rectangle overlay) */
-    #cropOverlay {
+    /* Professional crop UI */
+    #cropLayer {
       display: none;
       position: absolute;
-      border: 2px solid var(--accent);
-      box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+      inset: 0;
+      z-index: 8;
       pointer-events: none;
     }
-    #cropOverlay.visible {
+    #cropLayer.visible {
       display: block;
     }
+    #cropBox {
+      position: absolute;
+      border: 2px solid #3b82f6;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+      pointer-events: auto;
+      touch-action: none;
+      cursor: move;
+      box-sizing: border-box;
+    }
+    #cropBox::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(255,255,255,0.5);
+      pointer-events: none;
+    }
+    /* rule-of-thirds grid */
+    #cropBox .grid-line {
+      position: absolute;
+      background: rgba(255,255,255,0.25);
+      pointer-events: none;
+    }
+    #cropBox .grid-v1 { left: 33.33%; top: 0; bottom: 0; width: 1px; }
+    #cropBox .grid-v2 { left: 66.66%; top: 0; bottom: 0; width: 1px; }
+    #cropBox .grid-h1 { top: 33.33%; left: 0; right: 0; height: 1px; }
+    #cropBox .grid-h2 { top: 66.66%; left: 0; right: 0; height: 1px; }
+    .crop-handle {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      margin: -14px 0 0 -14px;
+      background: #fff;
+      border: 3px solid #3b82f6;
+      border-radius: 6px;
+      pointer-events: auto;
+      touch-action: none;
+      z-index: 9;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .crop-handle.tl { cursor: nwse-resize; }
+    .crop-handle.tr { cursor: nesw-resize; }
+    .crop-handle.bl { cursor: nesw-resize; }
+    .crop-handle.br { cursor: nwse-resize; }
+    .crop-handle.tm, .crop-handle.bm { cursor: ns-resize; width: 36px; margin-left: -18px; height: 22px; margin-top: -11px; border-radius: 4px; }
+    .crop-handle.ml, .crop-handle.mr { cursor: ew-resize; height: 36px; margin-top: -18px; width: 22px; margin-left: -11px; border-radius: 4px; }
 
     /* Flatten corner markers */
     .corner-dot {
@@ -663,7 +708,22 @@
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="editCanvas"></canvas>
         <canvas id="quadCanvas"></canvas>
-        <div id="cropOverlay"></div>
+        <div id="cropLayer">
+          <div id="cropBox">
+            <div class="grid-line grid-v1"></div>
+            <div class="grid-line grid-v2"></div>
+            <div class="grid-line grid-h1"></div>
+            <div class="grid-line grid-h2"></div>
+          </div>
+          <div class="crop-handle tl" data-handle="tl"></div>
+          <div class="crop-handle tr" data-handle="tr"></div>
+          <div class="crop-handle bl" data-handle="bl"></div>
+          <div class="crop-handle br" data-handle="br"></div>
+          <div class="crop-handle tm" data-handle="tm"></div>
+          <div class="crop-handle bm" data-handle="bm"></div>
+          <div class="crop-handle ml" data-handle="ml"></div>
+          <div class="crop-handle mr" data-handle="mr"></div>
+        </div>
         <div id="flattenHint">Tap the 4 corners of the document</div>
       </div>
       <div class="toolbar">
@@ -675,8 +735,9 @@
           <button class="color-dot active" data-color="#ef4444" style="background:#ef4444"></button>
           <button class="color-dot" data-color="#3b82f6" style="background:#3b82f6"></button>
           <button class="color-dot" data-color="#22c55e" style="background:#22c55e"></button>
-          <button class="color-dot" data-color="#000000" style="background:#000"></button>
           <button class="color-dot" data-color="#fbbf24" style="background:#fbbf24"></button>
+          <button class="color-dot" data-color="#000000" style="background:#000"></button>
+          <button class="color-dot" data-color="#ffffff" style="background:#fff;border-color:#888" title="White"></button>
           <label style="font-size:0.75rem;color:var(--muted)">Size</label>
           <input type="range" id="penSize" min="2" max="24" value="4" style="width:80px;accent-color:var(--accent)" />
         </div>
@@ -715,10 +776,13 @@
           <button class="tool-btn" data-tool="annotate" title="Markup">
             <span class="icon">✏️</span> Markup
           </button>
-          <button class="tool-btn" data-tool="autofix" title="Auto Fix">
-            <span class="icon">🪄</span> Auto Fix
+          <button class="tool-btn" data-tool="magic" title="Magic Enhance – auto clean like a real scanner">
+            <span class="icon">⚡</span> Magic
           </button>
-          <button class="tool-btn" data-tool="heal" title="Heal folds & tears – fill with paper color">
+          <button class="tool-btn" data-tool="autofix" title="Auto Fix">
+            <span class="icon">🪄</span> Fix
+          </button>
+          <button class="tool-btn" data-tool="heal" title="Heal bends & tears">
             <span class="icon">🩹</span> Heal
           </button>
           <button class="tool-btn" data-tool="deblur" title="Deblur">
@@ -739,8 +803,8 @@
         </div>
         <div id="pagesBar"></div>
         <div class="action-row">
-          <button class="btn btn-secondary" id="btnApplyCrop" style="display:none">Apply Crop</button>
-          <button class="btn btn-secondary" id="btnApplyFlatten" style="display:none">Apply Flatten</button>
+          <button class="btn" id="btnApplyCrop" style="display:none">✓ Apply Crop</button>
+          <button class="btn" id="btnApplyFlatten" style="display:none">✓ Apply Flatten</button>
           <button class="btn btn-secondary" id="btnAddPage" title="Add page to document">＋ Page</button>
           <button class="btn" id="btnSave">💾 Save</button>
         </div>
@@ -781,6 +845,7 @@
       lastY: 0,
       cropStart: null,
       cropRect: null,
+      cropDrag: null, // { type: 'move'|'tl'|..., startX, startY, origRect }
       scale: 1,
       offsetX: 0,
       offsetY: 0,
@@ -810,7 +875,8 @@
     const canvas = $("editCanvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const canvasWrap = $("canvasWrap");
-    const cropOverlay = $("cropOverlay");
+    const cropLayer = $("cropLayer");
+    const cropBox = $("cropBox");
     const eraserPanel = $("eraserPanel");
     const filterPanel = $("filterPanel");
     const toastEl = $("toast");
@@ -883,7 +949,7 @@
         loadImageFromUrl(url).then(() => {
           URL.revokeObjectURL(url);
           stopCamera();
-          openEditor();
+          openEditor({ autoMagic: true });
         });
       }, "image/jpeg", 0.92);
     }
@@ -941,7 +1007,7 @@
       const url = URL.createObjectURL(file);
       loadImageFromUrl(url).then(() => {
         URL.revokeObjectURL(url);
-        openEditor();
+        openEditor({ autoMagic: true });
       });
     }
 
@@ -1078,6 +1144,10 @@
         runHeal();
         return;
       }
+      if (tool === "magic") {
+        runMagicEnhance();
+        return;
+      }
       if (tool === "ocr") {
         runOCR();
         return;
@@ -1101,12 +1171,28 @@
       $("btnApplyFlatten").style.display = tool === "flatten" ? "block" : "none";
 
       if (tool === "crop") {
-        state.cropRect = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+        // Auto-detect document bounds when possible
+        const auto = detectDocumentBounds();
+        if (auto) {
+          state.cropRect = auto;
+        } else {
+          const insetX = Math.round(canvas.width * 0.05);
+          const insetY = Math.round(canvas.height * 0.05);
+          state.cropRect = {
+            x: insetX,
+            y: insetY,
+            w: Math.max(20, canvas.width - insetX * 2),
+            h: Math.max(20, canvas.height - insetY * 2)
+          };
+        }
+        state.cropDrag = null;
         updateCropOverlay();
-        cropOverlay.classList.add("visible");
+        cropLayer.classList.add("visible");
+        toast(auto ? "Document detected – adjust if needed" : "Drag corners or edges to crop");
       } else {
-        cropOverlay.classList.remove("visible");
+        cropLayer.classList.remove("visible");
         state.cropStart = null;
+        state.cropDrag = null;
       }
 
       if (tool === "flatten") {
@@ -1342,9 +1428,18 @@
       };
     }
 
+    // Cache paper color for eraser strokes (recomputed each stroke start)
+    let _paperCache = null;
+    function getPaperColorCached() {
+      if (!_paperCache && state.baseImageData) {
+        _paperCache = estimatePaperColor(state.baseImageData);
+      }
+      return _paperCache || { r: 250, g: 250, b: 248 };
+    }
+    function invalidatePaperCache() { _paperCache = null; }
+
     function eraseAt(x, y) {
       if (!state.currentImageData || !state.baseImageData) return;
-      // history is pushed once at stroke start (see onPointerDown)
       const size = parseInt($("eraserSize").value, 10);
       const r = size / 2;
       const r2 = r * r;
@@ -1355,10 +1450,16 @@
       const cur = state.currentImageData.data;
       const base = state.baseImageData.data;
 
-      // One shared background color for the whole stroke dab (stable look)
-      const bg = sampleSurroundingColor(cur, w, h, cx, cy, r);
+      // Use document paper color (stable, matches real page)
+      // Blend slightly with local surround so edges don't look pasted
+      const paper = getPaperColorCached();
+      const local = sampleSurroundingColor(cur, w, h, cx, cy, r);
+      const bg = {
+        r: Math.round(paper.r * 0.75 + local.r * 0.25),
+        g: Math.round(paper.g * 0.75 + local.g * 0.25),
+        b: Math.round(paper.b * 0.75 + local.b * 0.25)
+      };
 
-      // Soft feather: full strength in center, fade at edge
       for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
         for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
           const dist2 = dx * dx + dy * dy;
@@ -1368,23 +1469,19 @@
           if (px < 0 || py < 0 || px >= w || py >= h) continue;
 
           const dist = Math.sqrt(dist2);
-          // soft alpha so edges blend naturally
-          const alpha = Math.max(0, 1 - dist / r);
-          const a = alpha * alpha; // smoother falloff
+          // Strong center fill, soft edge so it matches paper cleanly
+          const t = Math.max(0, 1 - dist / r);
+          const a = t * t * (3 - 2 * t); // smoothstep — solid paper fill
 
           const i = (py * w + px) * 4;
-          // blend current pixel toward sampled background
           cur[i]     = Math.round(cur[i]     * (1 - a) + bg.r * a);
           cur[i + 1] = Math.round(cur[i + 1] * (1 - a) + bg.g * a);
           cur[i + 2] = Math.round(cur[i + 2] * (1 - a) + bg.b * a);
-
           base[i]     = Math.round(base[i]     * (1 - a) + bg.r * a);
           base[i + 1] = Math.round(base[i + 1] * (1 - a) + bg.g * a);
           base[i + 2] = Math.round(base[i + 2] * (1 - a) + bg.b * a);
         }
       }
-
-      // redraw the affected region for speed
       ctx.putImageData(state.currentImageData, 0, 0);
     }
 
@@ -1479,20 +1576,21 @@
                 b = b + (paper.b - b) * lift;
               }
 
-              // Side / edge gradient cleanup (only lightish pixels)
+              // Professional edge repair — blend border gradients toward paper
               const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
-              const edgeZone = Math.min(width, height) * 0.10;
-              if (edgeDist < edgeZone && lum > textCut + 10) {
+              const edgeZone = Math.min(width, height) * 0.14;
+              if (edgeDist < edgeZone && lum > textCut + 8) {
                 const edgeFactor = 1 - edgeDist / edgeZone;
-                const t = edgeFactor * 0.55;
+                // stronger near the very edge
+                const t = Math.min(0.92, edgeFactor * edgeFactor * 0.85 + edgeFactor * 0.25);
                 r = r * (1 - t) + paper.r * t;
                 g = g * (1 - t) + paper.g * t;
                 b = b * (1 - t) + paper.b * t;
               }
 
-              // Near-white dirt / yellow cast
-              if (lum > 195) {
-                const t = 0.3;
+              // Near-white dirt / yellow cast / uneven lighting
+              if (lum > 185) {
+                const t = 0.35;
                 r = r * (1 - t) + paper.r * t;
                 g = g * (1 - t) + paper.g * t;
                 b = b * (1 - t) + paper.b * t;
@@ -1531,9 +1629,25 @@
             }
           }
 
+          // Outer border strip → pure paper (removes table edges, desk, shadows at frame)
+          const border = Math.max(2, Math.floor(Math.min(width, height) * 0.012));
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
+              if (edgeDist >= border) continue;
+              const i = (y * width + x) * 4;
+              const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+              if (lum < textCut) continue; // keep any text that touches edge
+              const t = 1 - edgeDist / border;
+              d[i] = clamp(d[i] * (1 - t) + paper.r * t);
+              d[i + 1] = clamp(d[i + 1] * (1 - t) + paper.g * t);
+              d[i + 2] = clamp(d[i + 2] * (1 - t) + paper.b * t);
+            }
+          }
+
           state.baseImageData = out;
           applyFilterAndDraw();
-          toast("Auto Fix done – background cleaned, text kept dark");
+          toast("Auto Fix done – edges & background cleaned");
         } catch (err) {
           console.error(err);
           toast("Auto Fix failed");
@@ -1543,7 +1657,41 @@
       }, 40);
     }
 
-    // ========== Heal folds & tears (fill with matching paper/bg color) ==========
+    // ========== Heal: flatten paper bends + fill folds/tears ==========
+    function boxBlurChannel(src, w, h, radius) {
+      // src: Float32Array length w*h, separable box blur
+      const tmp = new Float32Array(w * h);
+      const out = new Float32Array(w * h);
+      const r = radius;
+      for (let y = 0; y < h; y++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) {
+          const xx = Math.min(w - 1, Math.max(0, k));
+          sum += src[y * w + xx];
+        }
+        for (let x = 0; x < w; x++) {
+          tmp[y * w + x] = sum / (2 * r + 1);
+          const remove = Math.min(w - 1, Math.max(0, x - r));
+          const add = Math.min(w - 1, Math.max(0, x + r + 1));
+          sum += src[y * w + add] - src[y * w + remove];
+        }
+      }
+      for (let x = 0; x < w; x++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) {
+          const yy = Math.min(h - 1, Math.max(0, k));
+          sum += tmp[yy * w + x];
+        }
+        for (let y = 0; y < h; y++) {
+          out[y * w + x] = sum / (2 * r + 1);
+          const remove = Math.min(h - 1, Math.max(0, y - r));
+          const add = Math.min(h - 1, Math.max(0, y + r + 1));
+          sum += tmp[add * w + x] - tmp[remove * w + x];
+        }
+      }
+      return out;
+    }
+
     function runHeal() {
       if (!state.baseImageData) {
         toast("No image loaded");
@@ -1551,145 +1699,86 @@
       }
       pushHistory();
       showLoading(true);
-      $("loadingMsg").textContent = "Healing folds & tears…";
+      $("loadingMsg").textContent = "Flattening bends & healing…";
       setTimeout(() => {
         try {
           const src = state.baseImageData;
           const { width: w, height: h, data } = src;
           const paper = estimatePaperColor(src);
-          const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
+          const paperLum = Math.max(1, 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b);
 
-          // Working buffers (float for smooth blending)
-          let cur = new Float32Array(w * h * 3);
-          for (let i = 0, p = 0; i < data.length; i += 4, p += 3) {
-            cur[p] = data[i];
-            cur[p + 1] = data[i + 1];
-            cur[p + 2] = data[i + 2];
+          // --- 1) Illumination map (large blur) to remove paper bends / soft folds ---
+          const lum = new Float32Array(w * h);
+          for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+            lum[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
           }
+          // Radius ~3–4% of min dimension captures bend-scale shading
+          const blurR = Math.max(8, Math.round(Math.min(w, h) * 0.035));
+          const illum = boxBlurChannel(lum, w, h, blurR);
+          // Second softer pass
+          const illum2 = boxBlurChannel(illum, w, h, Math.max(4, Math.round(blurR * 0.5)));
 
-          // Text should stay: dark AND local contrast high
-          const isLikelyText = new Uint8Array(w * h);
+          // Local contrast for text protection
+          const isText = new Uint8Array(w * h);
           for (let y = 1; y < h - 1; y++) {
             for (let x = 1; x < w - 1; x++) {
-              const p = (y * w + x) * 3;
-              const lum = 0.299 * cur[p] + 0.587 * cur[p + 1] + 0.114 * cur[p + 2];
-              if (lum > paperLum - 50) continue;
-              // local range
+              const p = y * w + x;
+              if (lum[p] > paperLum - 45) continue;
               let minL = 255, maxL = 0;
               for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
-                  const q = ((y + dy) * w + (x + dx)) * 3;
-                  const l = 0.299 * cur[q] + 0.587 * cur[q + 1] + 0.114 * cur[q + 2];
+                  const l = lum[(y + dy) * w + (x + dx)];
                   if (l < minL) minL = l;
                   if (l > maxL) maxL = l;
                 }
               }
-              // sharp dark edge → text; soft dark → fold/shadow/tear
-              if (maxL - minL > 55 && lum < paperLum - 70) {
-                isLikelyText[y * w + x] = 1;
-              }
+              if (maxL - minL > 40 && lum[p] < paperLum - 55) isText[p] = 1;
             }
           }
 
-          // Several inpainting passes: replace damage with local paper-colored neighbors
-          const passes = 4;
-          const radius = 3;
-          for (let pass = 0; pass < passes; pass++) {
-            const next = new Float32Array(cur);
-            for (let y = 0; y < h; y++) {
-              for (let x = 0; x < w; x++) {
-                const idx = y * w + x;
-                if (isLikelyText[idx]) continue;
-
-                const p = idx * 3;
-                const lum = 0.299 * cur[p] + 0.587 * cur[p + 1] + 0.114 * cur[p + 2];
-
-                // Candidate damage: darker than paper (fold shadow, dirt, tear interior)
-                // or near-edge missing/dark strips
-                const edgeDist = Math.min(x, y, w - 1 - x, h - 1 - y);
-                const nearEdge = edgeDist < Math.min(w, h) * 0.08;
-                const darkGap = lum < paperLum - 18;
-                if (!darkGap && !nearEdge) continue;
-                if (lum > paperLum - 5) continue;
-
-                // Sample healthy (bright/paper-like) neighbors in a ring
-                let rSum = 0, gSum = 0, bSum = 0, wSum = 0;
-                let brightCount = 0;
-                for (let dy = -radius; dy <= radius; dy++) {
-                  for (let dx = -radius; dx <= radius; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const xx = x + dx, yy = y + dy;
-                    if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-                    const nidx = yy * w + xx;
-                    if (isLikelyText[nidx]) continue;
-                    const np = nidx * 3;
-                    const nl = 0.299 * cur[np] + 0.587 * cur[np + 1] + 0.114 * cur[np + 2];
-                    // Prefer paper-bright neighbors
-                    if (nl < paperLum - 25) continue;
-                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    const weight = (nl / 255) / dist;
-                    rSum += cur[np] * weight;
-                    gSum += cur[np + 1] * weight;
-                    bSum += cur[np + 2] * weight;
-                    wSum += weight;
-                    brightCount++;
-                  }
-                }
-
-                if (wSum < 0.01 || brightCount < 3) {
-                  // fall back to global paper color for true holes / tears
-                  if (lum < paperLum - 30) {
-                    const t = 0.55 + pass * 0.1;
-                    next[p] = cur[p] * (1 - t) + paper.r * t;
-                    next[p + 1] = cur[p + 1] * (1 - t) + paper.g * t;
-                    next[p + 2] = cur[p + 2] * (1 - t) + paper.b * t;
-                  }
-                  continue;
-                }
-
-                const fr = rSum / wSum;
-                const fg = gSum / wSum;
-                const fb = bSum / wSum;
-                // Stronger blend on darker damage / later passes grow the fill
-                const strength = Math.min(0.95, 0.4 + (paperLum - lum) / paperLum * 0.5 + pass * 0.08);
-                next[p] = cur[p] * (1 - strength) + fr * strength;
-                next[p + 1] = cur[p + 1] * (1 - strength) + fg * strength;
-                next[p + 2] = cur[p + 2] * (1 - strength) + fb * strength;
-              }
-            }
-            cur = next;
-          }
-
-          // Soften residual fold lines: thin dark ridges between paper
           const out = new ImageData(w, h);
           const d = out.data;
+
           for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-              const idx = y * w + x;
-              const p = idx * 3;
-              let r = cur[p], g = cur[p + 1], b = cur[p + 2];
-              if (!isLikelyText[idx] && x > 0 && x < w - 1 && y > 0 && y < h - 1) {
-                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                const left = (y * w + (x - 1)) * 3;
-                const right = (y * w + (x + 1)) * 3;
-                const up = ((y - 1) * w + x) * 3;
-                const down = ((y + 1) * w + x) * 3;
-                const lL = 0.299 * cur[left] + 0.587 * cur[left + 1] + 0.114 * cur[left + 2];
-                const lR = 0.299 * cur[right] + 0.587 * cur[right + 1] + 0.114 * cur[right + 2];
-                const lU = 0.299 * cur[up] + 0.587 * cur[up + 1] + 0.114 * cur[up + 2];
-                const lD = 0.299 * cur[down] + 0.587 * cur[down + 1] + 0.114 * cur[down + 2];
-                // thin dark line: neighbors brighter on both sides
-                if (lum < paperLum - 15 && lL > lum + 12 && lR > lum + 12) {
-                  r = (cur[left] + cur[right]) / 2;
-                  g = (cur[left + 1] + cur[right + 1]) / 2;
-                  b = (cur[left + 2] + cur[right + 2]) / 2;
-                } else if (lum < paperLum - 15 && lU > lum + 12 && lD > lum + 12) {
-                  r = (cur[up] + cur[down]) / 2;
-                  g = (cur[up + 1] + cur[down + 1]) / 2;
-                  b = (cur[up + 2] + cur[down + 2]) / 2;
+              const p = y * w + x;
+              const i = p * 4;
+              let r = data[i], g = data[i + 1], b = data[i + 2];
+              const L = lum[p];
+              const I = Math.max(8, illum2[p]);
+
+              // Normalize by illumination: flatten bend shading toward paper luminance
+              // gain pulls dark-from-bend regions up without nuking real text
+              let gain = paperLum / I;
+              // limit gain so we don't blow highlights
+              gain = Math.min(2.2, Math.max(0.7, gain));
+
+              if (isText[p]) {
+                // Keep text dark — only tiny lift so it doesn't look stuck in a hole
+                const mild = 1 + (gain - 1) * 0.15;
+                r = clamp(r * mild);
+                g = clamp(g * mild);
+                b = clamp(b * mild);
+              } else {
+                r = clamp(r * gain);
+                g = clamp(g * gain);
+                b = clamp(b * gain);
+                const nL = 0.299 * r + 0.587 * g + 0.114 * b;
+                // Push non-text toward paper color if still darker (residual fold)
+                if (nL < paperLum - 8) {
+                  const t = Math.min(0.85, (paperLum - nL) / paperLum * 0.9);
+                  r = r * (1 - t) + paper.r * t;
+                  g = g * (1 - t) + paper.g * t;
+                  b = b * (1 - t) + paper.b * t;
+                } else if (nL > paperLum + 15) {
+                  // slight tone down of over-bright
+                  const t = 0.2;
+                  r = r * (1 - t) + paper.r * t;
+                  g = g * (1 - t) + paper.g * t;
+                  b = b * (1 - t) + paper.b * t;
                 }
               }
-              const i = idx * 4;
+
               d[i] = clamp(r);
               d[i + 1] = clamp(g);
               d[i + 2] = clamp(b);
@@ -1697,9 +1786,53 @@
             }
           }
 
+          // --- 2) Inpaint remaining tear holes / dark non-text blobs ---
+          const lum2 = new Float32Array(w * h);
+          for (let p = 0; p < w * h; p++) {
+            const i = p * 4;
+            lum2[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          }
+          for (let pass = 0; pass < 3; pass++) {
+            const copy = new Uint8ClampedArray(d);
+            for (let y = 2; y < h - 2; y++) {
+              for (let x = 2; x < w - 2; x++) {
+                const p = y * w + x;
+                if (isText[p]) continue;
+                if (lum2[p] > paperLum - 20) continue;
+                // average bright neighbors in 5x5
+                let rs = 0, gs = 0, bs = 0, n = 0;
+                for (let dy = -2; dy <= 2; dy++) {
+                  for (let dx = -2; dx <= 2; dx++) {
+                    const np = (y + dy) * w + (x + dx);
+                    if (isText[np]) continue;
+                    if (lum2[np] < paperLum - 15) continue;
+                    const ni = np * 4;
+                    rs += copy[ni]; gs += copy[ni + 1]; bs += copy[ni + 2];
+                    n++;
+                  }
+                }
+                const i = p * 4;
+                if (n >= 4) {
+                  const t = 0.55 + pass * 0.15;
+                  d[i] = clamp(copy[i] * (1 - t) + (rs / n) * t);
+                  d[i + 1] = clamp(copy[i + 1] * (1 - t) + (gs / n) * t);
+                  d[i + 2] = clamp(copy[i + 2] * (1 - t) + (bs / n) * t);
+                  lum2[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                } else if (lum2[p] < paperLum - 35) {
+                  const t = 0.6;
+                  d[i] = clamp(copy[i] * (1 - t) + paper.r * t);
+                  d[i + 1] = clamp(copy[i + 1] * (1 - t) + paper.g * t);
+                  d[i + 2] = clamp(copy[i + 2] * (1 - t) + paper.b * t);
+                  lum2[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                }
+              }
+            }
+          }
+
           state.baseImageData = out;
+          invalidatePaperCache();
           applyFilterAndDraw();
-          toast("Healed – folds & tears filled with paper color");
+          toast("Healed – bends flattened, damage filled");
         } catch (err) {
           console.error(err);
           toast("Heal failed");
@@ -1710,7 +1843,20 @@
       }, 40);
     }
 
-    // ========== Deblur (unsharp mask + edge-aware sharpen) ==========
+    // ========== Deblur (multi-scale unsharp + text edge boost) ==========
+    function blurRGB(data, w, h, radius) {
+      const nPix = w * h;
+      const ch = [new Float32Array(nPix), new Float32Array(nPix), new Float32Array(nPix)];
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        ch[0][p] = data[i]; ch[1][p] = data[i + 1]; ch[2][p] = data[i + 2];
+      }
+      return [
+        boxBlurChannel(ch[0], w, h, radius),
+        boxBlurChannel(ch[1], w, h, radius),
+        boxBlurChannel(ch[2], w, h, radius)
+      ];
+    }
+
     function runDeblur() {
       if (!state.baseImageData) {
         toast("No image loaded");
@@ -1718,109 +1864,71 @@
       }
       pushHistory();
       showLoading(true);
+      $("loadingMsg").textContent = "Deblurring…";
       setTimeout(() => {
         try {
           const src = state.baseImageData;
-          const { width, height, data } = src;
-          const w = width, h = height;
+          const { width: w, height: h, data } = src;
 
-          // 1) Fast separable box blur (radius 1) → approximation of low-pass
-          const blur = new Float32Array(w * h * 3);
-          const tmp = new Float32Array(w * h * 3);
-
-          // horizontal pass
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              let r = 0, g = 0, b = 0, n = 0;
-              for (let k = -1; k <= 1; k++) {
-                const xx = Math.min(w - 1, Math.max(0, x + k));
-                const i = (y * w + xx) * 4;
-                r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
-              }
-              const o = (y * w + x) * 3;
-              tmp[o] = r / n; tmp[o + 1] = g / n; tmp[o + 2] = b / n;
-            }
-          }
-          // vertical pass
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              let r = 0, g = 0, b = 0, n = 0;
-              for (let k = -1; k <= 1; k++) {
-                const yy = Math.min(h - 1, Math.max(0, y + k));
-                const o = (yy * w + x) * 3;
-                r += tmp[o]; g += tmp[o + 1]; b += tmp[o + 2]; n++;
-              }
-              const o = (y * w + x) * 3;
-              blur[o] = r / n; blur[o + 1] = g / n; blur[o + 2] = b / n;
-            }
-          }
-
-          // 2) Unsharp mask: result = original + amount * (original - blur)
-          // Stronger on dark (text) edges, gentler on paper
-          const amount = 1.35;
+          // Multi-scale unsharp: fine (r=1) + medium (r=2)
+          const blur1 = blurRGB(data, w, h, 1);
+          const blur2 = blurRGB(data, w, h, 2);
           const out = new ImageData(w, h);
           const d = out.data;
 
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-              const i = (y * w + x) * 4;
-              const o = (y * w + x) * 3;
-              const or_ = data[i], og = data[i + 1], ob = data[i + 2];
-              const br = blur[o], bg = blur[o + 1], bb = blur[o + 2];
+          for (let p = 0; p < w * h; p++) {
+            const i = p * 4;
+            const or_ = data[i], og = data[i + 1], ob = data[i + 2];
+            const lum = 0.299 * or_ + 0.587 * og + 0.114 * ob;
 
-              const lum = 0.299 * or_ + 0.587 * og + 0.114 * ob;
-              // Boost sharpening on mid-dark text, ease off on pure paper / pure black
-              let localAmt = amount;
-              if (lum > 210) localAmt *= 0.35;       // paper – avoid noise
-              else if (lum < 40) localAmt *= 0.7;    // already dark ink
-              else localAmt *= 1.15;                 // text edges
+            // Stronger on text-ish tones, mild on paper to avoid grain
+            let a1 = 1.8, a2 = 0.9;
+            if (lum > 220) { a1 = 0.4; a2 = 0.2; }
+            else if (lum > 180) { a1 = 1.0; a2 = 0.5; }
+            else if (lum < 30) { a1 = 1.2; a2 = 0.6; }
+            else { a1 = 2.1; a2 = 1.1; } // body text
 
-              let r = or_ + localAmt * (or_ - br);
-              let g = og + localAmt * (og - bg);
-              let b = ob + localAmt * (ob - bb);
+            let r = or_ + a1 * (or_ - blur1[0][p]) + a2 * (or_ - blur2[0][p]);
+            let g = og + a1 * (og - blur1[1][p]) + a2 * (og - blur2[1][p]);
+            let b = ob + a1 * (ob - blur1[2][p]) + a2 * (ob - blur2[2][p]);
 
-              d[i] = clamp(r);
-              d[i + 1] = clamp(g);
-              d[i + 2] = clamp(b);
-              d[i + 3] = data[i + 3];
-            }
+            d[i] = clamp(r);
+            d[i + 1] = clamp(g);
+            d[i + 2] = clamp(b);
+            d[i + 3] = 255;
           }
 
-          // 3) Light 3×3 sharpen pass focused on high-contrast edges (text)
-          const pass = new Uint8ClampedArray(d);
-          const kernel = [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0];
+          // Laplacian-style edge boost on mid-tones (text strokes)
+          const snap = new Uint8ClampedArray(d);
           for (let y = 1; y < h - 1; y++) {
             for (let x = 1; x < w - 1; x++) {
               const i = (y * w + x) * 4;
-              const lum = 0.299 * pass[i] + 0.587 * pass[i + 1] + 0.114 * pass[i + 2];
-              // only sharpen likely text / edge pixels
-              if (lum > 200 || lum < 25) continue;
-
-              let r = 0, g = 0, b = 0, ki = 0;
-              for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                  const ni = ((y + dy) * w + (x + dx)) * 4;
-                  const k = kernel[ki++];
-                  r += pass[ni] * k;
-                  g += pass[ni + 1] * k;
-                  b += pass[ni + 2] * k;
-                }
+              const lum = 0.299 * snap[i] + 0.587 * snap[i + 1] + 0.114 * snap[i + 2];
+              if (lum > 210 || lum < 20) continue;
+              // center - average of 4-neighbors
+              for (let c = 0; c < 3; c++) {
+                const center = snap[i + c];
+                const avg = (
+                  snap[((y - 1) * w + x) * 4 + c] +
+                  snap[((y + 1) * w + x) * 4 + c] +
+                  snap[(y * w + (x - 1)) * 4 + c] +
+                  snap[(y * w + (x + 1)) * 4 + c]
+                ) / 4;
+                const edge = center - avg;
+                d[i + c] = clamp(center + edge * 1.25);
               }
-              // blend 60% sharpened into existing
-              d[i] = clamp(pass[i] * 0.4 + r * 0.6);
-              d[i + 1] = clamp(pass[i + 1] * 0.4 + g * 0.6);
-              d[i + 2] = clamp(pass[i + 2] * 0.4 + b * 0.6);
             }
           }
 
           state.baseImageData = out;
           applyFilterAndDraw();
-          toast("Deblur applied – text sharpened");
+          toast("Deblur applied – text edges boosted");
         } catch (err) {
           console.error(err);
           toast("Deblur failed");
         } finally {
           showLoading(false);
+          $("loadingMsg").textContent = "Processing…";
         }
       }, 40);
     }
@@ -2026,17 +2134,135 @@
       }, 40);
     }
 
-    // ========== Crop ==========
-    function updateCropOverlay() {
-      if (!state.cropRect) return;
+    // ========== Crop (professional handles) ==========
+    function canvasDisplayMetrics() {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width / canvas.width;
-      const scaleY = rect.height / canvas.height;
+      const wrap = canvasWrap.getBoundingClientRect();
+      return {
+        rect,
+        wrap,
+        scaleX: rect.width / canvas.width,
+        scaleY: rect.height / canvas.height,
+        offsetX: rect.left - wrap.left,
+        offsetY: rect.top - wrap.top
+      };
+    }
+
+    function updateCropOverlay() {
+      if (!state.cropRect || !cropLayer) return;
+      const m = canvasDisplayMetrics();
       const r = state.cropRect;
-      cropOverlay.style.left = (rect.left + r.x * scaleX - canvasWrap.getBoundingClientRect().left) + "px";
-      cropOverlay.style.top = (rect.top + r.y * scaleY - canvasWrap.getBoundingClientRect().top) + "px";
-      cropOverlay.style.width = (r.w * scaleX) + "px";
-      cropOverlay.style.height = (r.h * scaleY) + "px";
+      const left = m.offsetX + r.x * m.scaleX;
+      const top = m.offsetY + r.y * m.scaleY;
+      const width = r.w * m.scaleX;
+      const height = r.h * m.scaleY;
+
+      cropBox.style.left = left + "px";
+      cropBox.style.top = top + "px";
+      cropBox.style.width = width + "px";
+      cropBox.style.height = height + "px";
+
+      const positions = {
+        tl: [left, top],
+        tr: [left + width, top],
+        bl: [left, top + height],
+        br: [left + width, top + height],
+        tm: [left + width / 2, top],
+        bm: [left + width / 2, top + height],
+        ml: [left, top + height / 2],
+        mr: [left + width, top + height / 2]
+      };
+      cropLayer.querySelectorAll(".crop-handle").forEach(h => {
+        const [hx, hy] = positions[h.dataset.handle];
+        h.style.left = hx + "px";
+        h.style.top = hy + "px";
+      });
+    }
+
+    function clampCropRect(r) {
+      const minSize = 40;
+      let { x, y, w, h } = r;
+      if (w < minSize) w = minSize;
+      if (h < minSize) h = minSize;
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      if (x + w > canvas.width) {
+        if (w > canvas.width) { x = 0; w = canvas.width; }
+        else x = canvas.width - w;
+      }
+      if (y + h > canvas.height) {
+        if (h > canvas.height) { y = 0; h = canvas.height; }
+        else y = canvas.height - h;
+      }
+      return { x, y, w, h };
+    }
+
+    function applyCropHandleDelta(type, dx, dy, orig) {
+      let { x, y, w, h } = orig;
+      switch (type) {
+        case "move":
+          x += dx; y += dy;
+          break;
+        case "tl":
+          x += dx; y += dy; w -= dx; h -= dy;
+          break;
+        case "tr":
+          y += dy; w += dx; h -= dy;
+          break;
+        case "bl":
+          x += dx; w -= dx; h += dy;
+          break;
+        case "br":
+          w += dx; h += dy;
+          break;
+        case "tm":
+          y += dy; h -= dy;
+          break;
+        case "bm":
+          h += dy;
+          break;
+        case "ml":
+          x += dx; w -= dx;
+          break;
+        case "mr":
+          w += dx;
+          break;
+      }
+      // prevent inverted rect
+      if (w < 40) {
+        if (type === "tl" || type === "bl" || type === "ml") x = orig.x + orig.w - 40;
+        w = 40;
+      }
+      if (h < 40) {
+        if (type === "tl" || type === "tr" || type === "tm") y = orig.y + orig.h - 40;
+        h = 40;
+      }
+      return clampCropRect({ x, y, w, h });
+    }
+
+    function startCropDrag(type, clientX, clientY) {
+      const m = canvasDisplayMetrics();
+      state.cropDrag = {
+        type,
+        startClientX: clientX,
+        startClientY: clientY,
+        orig: { ...state.cropRect },
+        scaleX: m.scaleX,
+        scaleY: m.scaleY
+      };
+    }
+
+    function moveCropDrag(clientX, clientY) {
+      if (!state.cropDrag) return;
+      const d = state.cropDrag;
+      const dx = (clientX - d.startClientX) / d.scaleX;
+      const dy = (clientY - d.startClientY) / d.scaleY;
+      state.cropRect = applyCropHandleDelta(d.type, dx, dy, d.orig);
+      updateCropOverlay();
+    }
+
+    function endCropDrag() {
+      state.cropDrag = null;
     }
 
     function applyCrop() {
@@ -2071,10 +2297,42 @@
       ctx.putImageData(state.currentImageData, 0, 0);
 
       state.cropRect = null;
-      cropOverlay.classList.remove("visible");
+      state.cropDrag = null;
+      cropLayer.classList.remove("visible");
       setTool("move");
       toast("Cropped");
     }
+
+    // Wire crop handles (works on phone)
+    function initCropHandles() {
+      if (!cropLayer) return;
+      cropLayer.querySelectorAll(".crop-handle").forEach(handle => {
+        handle.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (state.tool !== "crop") return;
+          handle.setPointerCapture(e.pointerId);
+          startCropDrag(handle.dataset.handle, e.clientX, e.clientY);
+        });
+      });
+      cropBox.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (state.tool !== "crop") return;
+        cropBox.setPointerCapture(e.pointerId);
+        startCropDrag("move", e.clientX, e.clientY);
+      });
+    }
+    initCropHandles();
+
+    window.addEventListener("pointermove", (e) => {
+      if (state.cropDrag) {
+        e.preventDefault();
+        moveCropDrag(e.clientX, e.clientY);
+      }
+    }, { passive: false });
+    window.addEventListener("pointerup", endCropDrag);
+    window.addEventListener("pointercancel", endCropDrag);
 
     // ========== Events ==========
     // Home
@@ -2166,6 +2424,7 @@
       const pos = getCanvasPos(e);
       if (state.tool === "eraser") {
         pushHistory();
+        invalidatePaperCache(); // fresh paper sample each stroke
         state.isDrawing = true;
         eraseAt(pos.x, pos.y);
         state.lastX = pos.x;
@@ -2177,8 +2436,8 @@
         state.lastY = pos.y;
         annotateAt(pos.x, pos.y, pos.x, pos.y);
       } else if (state.tool === "crop") {
-        state.cropStart = pos;
-        state.cropRect = { x: pos.x, y: pos.y, w: 0, h: 0 };
+        // crop is handled by handles / crop box — ignore canvas taps
+        return;
       } else if (state.tool === "flatten") {
         if (state.flattenPoints.length >= 4) {
           state.flattenPoints = [];
@@ -2225,13 +2484,6 @@
         annotateAt(state.lastX, state.lastY, pos.x, pos.y);
         state.lastX = pos.x;
         state.lastY = pos.y;
-      } else if (state.tool === "crop" && state.cropStart) {
-        const x = Math.min(state.cropStart.x, pos.x);
-        const y = Math.min(state.cropStart.y, pos.y);
-        const w = Math.abs(pos.x - state.cropStart.x);
-        const h = Math.abs(pos.y - state.cropStart.y);
-        state.cropRect = { x, y, w, h };
-        updateCropOverlay();
       }
     }
 
@@ -2492,14 +2744,343 @@
       }
     }
 
+    // ========== Auto document bounds (for crop) ==========
+    function detectDocumentBounds() {
+      if (!state.baseImageData) return null;
+      const { width: w, height: h, data } = state.baseImageData;
+      if (w < 50 || h < 50) return null;
+
+      // Downsample for speed
+      const step = Math.max(1, Math.floor(Math.min(w, h) / 200));
+      const paper = estimatePaperColor(state.baseImageData);
+      const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
+
+      // Score rows/cols: fraction of "non-background" (desk is usually darker or very different)
+      function rowScore(y) {
+        let hit = 0, n = 0;
+        for (let x = 0; x < w; x += step) {
+          const i = (y * w + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          // page content or paper vs dark surroundings
+          if (Math.abs(lum - paperLum) < 55 || lum > paperLum - 30) hit++;
+          n++;
+        }
+        return hit / n;
+      }
+      function colScore(x) {
+        let hit = 0, n = 0;
+        for (let y = 0; y < h; y += step) {
+          const i = (y * w + x) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          if (Math.abs(lum - paperLum) < 55 || lum > paperLum - 30) hit++;
+          n++;
+        }
+        return hit / n;
+      }
+
+      const thresh = 0.55;
+      let top = 0, bottom = h - 1, left = 0, right = w - 1;
+      for (let y = 0; y < h; y += step) {
+        if (rowScore(y) > thresh) { top = Math.max(0, y - step); break; }
+      }
+      for (let y = h - 1; y >= 0; y -= step) {
+        if (rowScore(y) > thresh) { bottom = Math.min(h - 1, y + step); break; }
+      }
+      for (let x = 0; x < w; x += step) {
+        if (colScore(x) > thresh) { left = Math.max(0, x - step); break; }
+      }
+      for (let x = w - 1; x >= 0; x -= step) {
+        if (colScore(x) > thresh) { right = Math.min(w - 1, x + step); break; }
+      }
+
+      const pad = Math.round(Math.min(w, h) * 0.01);
+      top = Math.max(0, top - pad);
+      left = Math.max(0, left - pad);
+      bottom = Math.min(h - 1, bottom + pad);
+      right = Math.min(w - 1, right + pad);
+
+      const rw = right - left + 1;
+      const rh = bottom - top + 1;
+      // Reject if detection is almost full image or tiny
+      if (rw < w * 0.35 || rh < h * 0.35) return null;
+      if (rw > w * 0.98 && rh > h * 0.98) return null;
+      return { x: left, y: top, w: rw, h: rh };
+    }
+
+    // ========== Magic Enhance (scanner-app one-tap) ==========
+    function runProcessAsync(fn) {
+      return new Promise((resolve) => {
+        // Each process shows its own loading; we manage outer loading
+        const origShow = showLoading;
+        // temporarily no-op nested loading
+        let nested = false;
+        showLoading(true);
+        // Call the process — they use setTimeout 40ms internally
+        // Monkey-patch toast to silence intermediate messages
+        const origToast = toast;
+        const msgs = [];
+        window._silentToast = true;
+        const tWrap = (msg, ms) => { msgs.push(msg); };
+        // Direct call of internal logic is hard; chain by re-invoking with flags
+
+        // Simpler approach: sequential execution of core algorithms
+        resolve();
+      });
+    }
+
+    function runMagicEnhance() {
+      if (!state.baseImageData) {
+        toast("No image loaded");
+        return;
+      }
+      showLoading(true);
+      $("loadingMsg").textContent = "Magic Enhance…";
+
+      // Run heal → autofix → deblur as sequential promises
+      const quiet = { silent: true };
+      setTimeout(() => {
+        try {
+          // Snapshot for single undo
+          // pushHistory is called inside each — remove intermediate by only pushing once
+          // We'll push once here and skip inside by using direct pipeline
+
+          // 1) Illumination flatten + heal (core of runHeal without UI)
+          magicHealCore();
+          $("loadingMsg").textContent = "Cleaning background…";
+          setTimeout(() => {
+            try {
+              magicAutoFixCore();
+              $("loadingMsg").textContent = "Sharpening text…";
+              setTimeout(() => {
+                try {
+                  magicDeblurCore();
+                  invalidatePaperCache();
+                  applyFilterAndDraw();
+                  toast("Magic Enhance complete");
+                } catch (e) {
+                  console.error(e);
+                  toast("Enhance partially failed");
+                } finally {
+                  showLoading(false);
+                  $("loadingMsg").textContent = "Processing…";
+                }
+              }, 30);
+            } catch (e) {
+              console.error(e);
+              showLoading(false);
+              toast("Enhance failed");
+            }
+          }, 30);
+        } catch (e) {
+          console.error(e);
+          showLoading(false);
+          toast("Enhance failed");
+        }
+      }, 30);
+    }
+
+    function magicHealCore() {
+      // Reuse runHeal by temporarily suppressing history double-push
+      // Inline: call the same illumination logic via runHeal's path
+      // Simplest reliable path: invoke runHeal/runAutoFix/runDeblur but
+      // push history only once at start of magic
+      pushHistory();
+      // Directly execute heal body by calling runHeal without pushHistory
+      // Patch pushHistory temporarily
+      const realPush = pushHistory;
+      window._magicBatch = true;
+      pushHistory = function () { /* skip during batch */ };
+      try {
+        // Synchronous path extraction - call internal by forcing
+        // Since runHeal is async setTimeout, we need the core sync.
+
+        // Inline minimal heal (illumination) 
+        const src = state.baseImageData;
+        const { width: w, height: h, data } = src;
+        const paper = estimatePaperColor(src);
+        const paperLum = Math.max(1, 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b);
+        const lum = new Float32Array(w * h);
+        for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+          lum[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        }
+        const blurR = Math.max(8, Math.round(Math.min(w, h) * 0.035));
+        const illum = boxBlurChannel(lum, w, h, blurR);
+        const illum2 = boxBlurChannel(illum, w, h, Math.max(4, Math.round(blurR * 0.5)));
+        const isText = new Uint8Array(w * h);
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const p = y * w + x;
+            if (lum[p] > paperLum - 45) continue;
+            let minL = 255, maxL = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const l = lum[(y + dy) * w + (x + dx)];
+                if (l < minL) minL = l;
+                if (l > maxL) maxL = l;
+              }
+            }
+            if (maxL - minL > 40 && lum[p] < paperLum - 55) isText[p] = 1;
+          }
+        }
+        const out = new ImageData(w, h);
+        const d = out.data;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const p = y * w + x;
+            const i = p * 4;
+            let r = data[i], g = data[i + 1], b = data[i + 2];
+            const I = Math.max(8, illum2[p]);
+            let gain = Math.min(2.2, Math.max(0.7, paperLum / I));
+            if (isText[p]) {
+              const mild = 1 + (gain - 1) * 0.15;
+              r = clamp(r * mild); g = clamp(g * mild); b = clamp(b * mild);
+            } else {
+              r = clamp(r * gain); g = clamp(g * gain); b = clamp(b * gain);
+              const nL = 0.299 * r + 0.587 * g + 0.114 * b;
+              if (nL < paperLum - 8) {
+                const t = Math.min(0.85, (paperLum - nL) / paperLum * 0.9);
+                r = r * (1 - t) + paper.r * t;
+                g = g * (1 - t) + paper.g * t;
+                b = b * (1 - t) + paper.b * t;
+              }
+            }
+            d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); d[i + 3] = 255;
+          }
+        }
+        state.baseImageData = out;
+      } finally {
+        pushHistory = realPush;
+        window._magicBatch = false;
+      }
+    }
+
+    function magicAutoFixCore() {
+      // Call existing runAutoFix but skip history & UI
+      const src = state.baseImageData;
+      const { width, height, data } = src;
+      const out = new ImageData(width, height);
+      const d = out.data;
+      const paper = estimatePaperColor(src);
+      const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
+      const grid = 16;
+      const gw = Math.ceil(width / grid);
+      const gh = Math.ceil(height / grid);
+      const localMin = new Float32Array(gw * gh);
+      const localMax = new Float32Array(gw * gh);
+      for (let gy = 0; gy < gh; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
+          let minL = 255, maxL = 0;
+          const x0 = gx * grid, y0 = gy * grid;
+          const x1 = Math.min(width, x0 + grid);
+          const y1 = Math.min(height, y0 + grid);
+          for (let y = y0; y < y1; y += 2) {
+            for (let x = x0; x < x1; x += 2) {
+              const i = (y * width + x) * 4;
+              const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+              if (lum < minL) minL = lum;
+              if (lum > maxL) maxL = lum;
+            }
+          }
+          localMin[gy * gw + gx] = minL;
+          localMax[gy * gw + gx] = maxL;
+        }
+      }
+      const textCut = Math.min(paperLum - 45, 155);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          let r = data[i], g = data[i + 1], b = data[i + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          const gx = Math.min(gw - 1, Math.floor(x / grid));
+          const gy = Math.min(gh - 1, Math.floor(y / grid));
+          const shadowFloor = localMin[gy * gw + gx];
+          const localRange = localMax[gy * gw + gx] - shadowFloor;
+          if (lum < textCut) {
+            const darken = 0.15;
+            d[i] = clamp(r * (1 - darken));
+            d[i + 1] = clamp(g * (1 - darken));
+            d[i + 2] = clamp(b * (1 - darken));
+            d[i + 3] = data[i + 3];
+            continue;
+          }
+          const shadowAmt = Math.max(0, (150 - shadowFloor) / 150);
+          if (lum < paperLum - 5 && lum >= textCut) {
+            const lift = ((paperLum - lum) / paperLum) * (0.5 + 0.4 * shadowAmt);
+            r = r + (paper.r - r) * lift;
+            g = g + (paper.g - g) * lift;
+            b = b + (paper.b - b) * lift;
+          }
+          const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
+          const edgeZone = Math.min(width, height) * 0.14;
+          if (edgeDist < edgeZone && lum > textCut + 8) {
+            const edgeFactor = 1 - edgeDist / edgeZone;
+            const t = Math.min(0.92, edgeFactor * edgeFactor * 0.85 + edgeFactor * 0.25);
+            r = r * (1 - t) + paper.r * t;
+            g = g * (1 - t) + paper.g * t;
+            b = b * (1 - t) + paper.b * t;
+          }
+          if (lum > 185) {
+            const t = 0.35;
+            r = r * (1 - t) + paper.r * t;
+            g = g * (1 - t) + paper.g * t;
+            b = b * (1 - t) + paper.b * t;
+          }
+          d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); d[i + 3] = data[i + 3];
+        }
+      }
+      const border = Math.max(2, Math.floor(Math.min(width, height) * 0.012));
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
+          if (edgeDist >= border) continue;
+          const i = (y * width + x) * 4;
+          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          if (lum < textCut) continue;
+          const t = 1 - edgeDist / border;
+          d[i] = clamp(d[i] * (1 - t) + paper.r * t);
+          d[i + 1] = clamp(d[i + 1] * (1 - t) + paper.g * t);
+          d[i + 2] = clamp(d[i + 2] * (1 - t) + paper.b * t);
+        }
+      }
+      state.baseImageData = out;
+    }
+
+    function magicDeblurCore() {
+      const src = state.baseImageData;
+      const { width: w, height: h, data } = src;
+      const blur1 = blurRGB(data, w, h, 1);
+      const blur2 = blurRGB(data, w, h, 2);
+      const out = new ImageData(w, h);
+      const d = out.data;
+      for (let p = 0; p < w * h; p++) {
+        const i = p * 4;
+        const or_ = data[i], og = data[i + 1], ob = data[i + 2];
+        const lum = 0.299 * or_ + 0.587 * og + 0.114 * ob;
+        let a1 = 1.8, a2 = 0.9;
+        if (lum > 220) { a1 = 0.4; a2 = 0.2; }
+        else if (lum > 180) { a1 = 1.0; a2 = 0.5; }
+        else if (lum < 30) { a1 = 1.2; a2 = 0.6; }
+        else { a1 = 2.1; a2 = 1.1; }
+        d[i] = clamp(or_ + a1 * (or_ - blur1[0][p]) + a2 * (or_ - blur2[0][p]));
+        d[i + 1] = clamp(og + a1 * (og - blur1[1][p]) + a2 * (og - blur2[1][p]));
+        d[i + 2] = clamp(ob + a1 * (ob - blur1[2][p]) + a2 * (ob - blur2[2][p]));
+        d[i + 3] = 255;
+      }
+      state.baseImageData = out;
+    }
+
     // ========== Open editor ==========
-    function openEditor() {
+    function openEditor(opts) {
       showScreen("editor");
       setTool("move");
       applyModePreset();
       if (!state.filter) setFilter("original");
       else setFilter(state.filter);
       refreshPagesBar();
+      // Auto Magic for document-like modes (feels like a real scanner)
+      if (opts && opts.autoMagic !== false && state.scanMode !== "photo") {
+        setTimeout(() => runMagicEnhance(), 200);
+      }
     }
 
     // Prevent pull-to-refresh / accidental zoom on iOS
