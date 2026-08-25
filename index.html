@@ -475,28 +475,39 @@
     .crop-handle.tm, .crop-handle.bm { cursor: ns-resize; width: 36px; margin-left: -18px; height: 22px; margin-top: -11px; border-radius: 4px; }
     .crop-handle.ml, .crop-handle.mr { cursor: ew-resize; height: 36px; margin-top: -18px; width: 22px; margin-left: -11px; border-radius: 4px; }
 
-    /* Flatten corner markers */
+    /* Straighten corner markers — large for mobile touch */
     .corner-dot {
       position: absolute;
-      width: 26px;
-      height: 26px;
-      margin: -13px 0 0 -13px;
+      width: 44px;
+      height: 44px;
+      margin: -22px 0 0 -22px;
       border-radius: 50%;
       background: var(--accent);
       border: 3px solid #fff;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-      z-index: 5;
+      box-shadow: 0 3px 14px rgba(0,0,0,0.55);
+      z-index: 12;
       touch-action: none;
       pointer-events: auto;
       cursor: grab;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.65rem;
+      font-size: 0.7rem;
       font-weight: 700;
       color: #fff;
+      user-select: none;
+      -webkit-user-select: none;
     }
-    .corner-dot:active { cursor: grabbing; transform: scale(1.15); }
+    .corner-dot:active, .corner-dot.dragging {
+      cursor: grabbing;
+      transform: scale(1.2);
+      background: #60a5fa;
+    }
+    .corner-dot .hit {
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+    }
     #flattenHint {
       display: none;
       position: absolute;
@@ -522,6 +533,43 @@
       z-index: 4;
     }
     #btnUndo:not(:disabled) { opacity: 1 !important; }
+
+    /* Crop loupe magnifier */
+    #cropLoupe {
+      display: none;
+      position: absolute;
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(59,130,246,0.8);
+      pointer-events: none;
+      z-index: 15;
+      overflow: hidden;
+      background: #111;
+    }
+    #cropLoupe.visible { display: block; }
+    #cropLoupe canvas {
+      width: 100%;
+      height: 100%;
+      image-rendering: auto;
+    }
+    #cropLoupe .cross {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 12px; height: 12px;
+      margin: -6px 0 0 -6px;
+      pointer-events: none;
+    }
+    #cropLoupe .cross::before, #cropLoupe .cross::after {
+      content: "";
+      position: absolute;
+      background: #3b82f6;
+    }
+    #cropLoupe .cross::before { left: 5px; top: 0; width: 2px; height: 12px; }
+    #cropLoupe .cross::after { left: 0; top: 5px; width: 12px; height: 2px; }
+
+    .contrast-panel.visible { display: flex !important; }
 
     /* Scan modes */
     .mode-grid {
@@ -728,12 +776,23 @@
           <div class="crop-handle ml" data-handle="ml"></div>
           <div class="crop-handle mr" data-handle="mr"></div>
         </div>
-        <div id="flattenHint">Tap the 4 corners of the document</div>
+        <div id="flattenHint">Tap 4 corners to straighten</div>
+        <div id="cropLoupe"><canvas id="loupeCanvas" width="96" height="96"></canvas><div class="cross"></div></div>
       </div>
       <div class="toolbar">
         <div class="eraser-panel" id="eraserPanel">
+          <button class="chip-btn active" data-erase="paper" type="button">Paper</button>
+          <button class="chip-btn" data-erase="surround" type="button">Surround</button>
+          <button class="chip-btn" data-erase="color" type="button">Color</button>
+          <button class="chip-btn" data-erase="eyedrop" type="button" title="Pick color from image">💧</button>
+          <span id="eraseColorSwatch" style="width:22px;height:22px;border-radius:6px;background:#f5f5f4;border:1px solid #666;flex-shrink:0;"></span>
           <label>Size</label>
-          <input type="range" id="eraserSize" min="10" max="100" value="36" />
+          <input type="range" id="eraserSize" min="10" max="120" value="40" />
+        </div>
+        <div class="contrast-panel" id="contrastPanel" style="display:none;padding:0 16px 8px;align-items:center;justify-content:center;gap:12px;max-width:360px;margin:0 auto;width:100%;">
+          <label style="font-size:0.8rem;color:var(--muted)">Contrast</label>
+          <input type="range" id="contrastSlider" min="80" max="180" value="100" style="flex:1;accent-color:var(--accent)" />
+          <button class="chip-btn" id="btnApplyContrast" type="button">Apply</button>
         </div>
         <div class="annotate-panel" id="annotatePanel">
           <button class="color-dot active" data-color="#ef4444" style="background:#ef4444"></button>
@@ -748,10 +807,27 @@
         <div class="filter-panel" id="filterPanel">
           <button class="filter-chip active" data-filter="original">Original</button>
           <button class="filter-chip" data-filter="enhance">Enhance</button>
-          <button class="filter-chip" data-filter="grayscale">Grayscale</button>
+          <button class="filter-chip" data-filter="grayscale">Greyscale</button>
           <button class="filter-chip" data-filter="bw">B&amp;W</button>
           <button class="filter-chip" data-filter="contrast">High Contrast</button>
           <button class="filter-chip" data-filter="whiteboard">Whiteboard</button>
+        </div>
+        <div class="export-panel" id="resizePanel" style="display:none;">
+          <div class="row" style="margin-bottom:6px;">
+            <button class="chip-btn" data-resize="100" type="button">100%</button>
+            <button class="chip-btn" data-resize="75" type="button">75%</button>
+            <button class="chip-btn" data-resize="50" type="button">50%</button>
+            <button class="chip-btn" data-resize="25" type="button">25%</button>
+          </div>
+          <div class="row">
+            <button class="chip-btn" data-resize="w1200" type="button">1200px</button>
+            <button class="chip-btn" data-resize="w1600" type="button">1600px</button>
+            <button class="chip-btn" data-resize="w2000" type="button">2000px</button>
+          </div>
+          <div class="row" style="margin-top:6px;">
+            <button class="chip-btn" data-resize="a4" type="button">A4 150dpi</button>
+            <button class="chip-btn" data-resize="letter" type="button">Letter 150dpi</button>
+          </div>
         </div>
         <div class="export-panel" id="exportPanel">
           <div class="row">
@@ -772,8 +848,8 @@
           <button class="tool-btn" data-tool="crop" title="Crop">
             <span class="icon">⬚</span> Crop
           </button>
-          <button class="tool-btn" data-tool="flatten" title="Flatten">
-            <span class="icon">📐</span> Flatten
+          <button class="tool-btn" data-tool="flatten" title="Straighten – tap 4 corners">
+            <span class="icon">📐</span> Straighten
           </button>
           <button class="tool-btn" data-tool="eraser" title="Magic Eraser">
             <span class="icon">✨</span> Eraser
@@ -796,8 +872,11 @@
           <button class="tool-btn" data-tool="ocr" title="OCR – extract text">
             <span class="icon">🔤</span> OCR
           </button>
-          <button class="tool-btn" data-tool="filter" title="Filters">
+          <button class="tool-btn" data-tool="filter" title="Filters & greyscale">
             <span class="icon">🎨</span> Filters
+          </button>
+          <button class="tool-btn" data-tool="resize" title="Resize image">
+            <span class="icon">↕️</span> Resize
           </button>
           <button class="tool-btn" data-tool="rotate" title="Rotate">
             <span class="icon">↻</span> Rotate
@@ -809,7 +888,7 @@
         <div id="pagesBar"></div>
         <div class="action-row">
           <button class="btn" id="btnApplyCrop" style="display:none">✓ Apply Crop</button>
-          <button class="btn" id="btnApplyFlatten" style="display:none">✓ Apply Flatten</button>
+          <button class="btn" id="btnApplyFlatten" style="display:none">✓ Apply Straighten</button>
           <button class="btn btn-secondary" id="btnAddPage" title="Add page to document">＋ Page</button>
           <button class="btn" id="btnSave">💾 Save</button>
         </div>
@@ -866,7 +945,10 @@
       penColor: "#ef4444",
       penSize: 4,
       exportQuality: 0.92,
-      isAnnotating: false
+      isAnnotating: false,
+      eraseMode: "paper",       // paper | surround | color | eyedrop
+      eraseColor: { r: 245, g: 245, b: 242 },
+      eyedropMode: false
     };
 
     // ========== DOM ==========
@@ -1137,27 +1219,43 @@
     }
 
     // ========== Tools ==========
+    function clearDrawingUi() {
+      state.isDrawing = false;
+      state.eyedropMode = false;
+      if (eraserPanel) eraserPanel.classList.remove("visible");
+      const ap = $("annotatePanel");
+      if (ap) ap.classList.remove("visible");
+    }
+
+    function setActiveToolButton(tool) {
+      document.querySelectorAll(".tool-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.tool === tool);
+      });
+    }
+
     function setTool(tool) {
-      if (tool === "autofix") {
-        runAutoFix();
-        return;
+      // One-shot tools: exit markup/eraser first so they don't stay "stuck on"
+      const oneShot = ["autofix", "deblur", "heal", "magic", "ocr", "rotate"];
+      if (oneShot.includes(tool)) {
+        clearDrawingUi();
+        if (state.tool === "annotate" || state.tool === "eraser" || state.tool === "crop" || state.tool === "flatten") {
+          cropLayer && cropLayer.classList.remove("visible");
+          if (state.tool === "flatten") {
+            clearFlattenMarkers();
+            $("flattenHint").classList.remove("visible");
+            $("btnApplyFlatten").style.display = "none";
+          }
+          state.tool = "move";
+          setActiveToolButton("move");
+        }
+        if (tool === "autofix") { runAutoFix(); return; }
+        if (tool === "deblur") { runDeblur(); return; }
+        if (tool === "heal") { runHeal(); return; }
+        if (tool === "magic") { runMagicEnhance(); return; }
+        if (tool === "ocr") { runOCR(); return; }
+        // rotate falls through to handler below after UI reset
       }
-      if (tool === "deblur") {
-        runDeblur();
-        return;
-      }
-      if (tool === "heal") {
-        runHeal();
-        return;
-      }
-      if (tool === "magic") {
-        runMagicEnhance();
-        return;
-      }
-      if (tool === "ocr") {
-        runOCR();
-        return;
-      }
+
       // clear flatten UI when leaving
       if (state.tool === "flatten" && tool !== "flatten") {
         clearFlattenMarkers();
@@ -1165,14 +1263,22 @@
         $("btnApplyFlatten").style.display = "none";
       }
 
+      // Always leave drawing mode when switching tools
+      if (tool !== "annotate" && tool !== "eraser") {
+        state.isDrawing = false;
+        state.eyedropMode = false;
+      }
+
       state.tool = tool;
-      document.querySelectorAll(".tool-btn").forEach(b => {
-        b.classList.toggle("active", b.dataset.tool === tool);
-      });
+      setActiveToolButton(tool);
       eraserPanel.classList.toggle("visible", tool === "eraser");
       filterPanel.classList.toggle("visible", tool === "filter");
       $("annotatePanel").classList.toggle("visible", tool === "annotate");
       $("exportPanel").classList.toggle("visible", tool === "export");
+      const rp = $("resizePanel");
+      if (rp) rp.style.display = tool === "resize" ? "flex" : "none";
+      const cp = $("contrastPanel");
+      if (cp) cp.classList.toggle("visible", tool === "filter");
       $("btnApplyCrop").style.display = tool === "crop" ? "block" : "none";
       $("btnApplyFlatten").style.display = tool === "flatten" ? "block" : "none";
 
@@ -1202,11 +1308,10 @@
       }
 
       if (tool === "flatten") {
-        state.flattenPoints = [];
-        clearFlattenMarkers();
-        $("flattenHint").textContent = "Tap the 4 corners of the document";
+        initStraightenCorners();
+        $("flattenHint").textContent = "Drag the 4 corners onto the page edges";
         $("flattenHint").classList.add("visible");
-        toast("Tap 4 corners in order (TL → TR → BR → BL)");
+        toast("Drag each blue dot to a corner of the page");
       }
 
       if (tool === "rotate") {
@@ -1266,23 +1371,50 @@
       };
     }
 
+    function initStraightenCorners() {
+      const w = canvas.width, h = canvas.height;
+      // Prefer auto-detected document bounds; else ~8% inset rectangle
+      const bounds = detectDocumentBounds();
+      let x0, y0, x1, y1;
+      if (bounds && bounds.w > w * 0.3 && bounds.h > h * 0.3) {
+        x0 = bounds.x;
+        y0 = bounds.y;
+        x1 = bounds.x + bounds.w;
+        y1 = bounds.y + bounds.h;
+      } else {
+        const ix = Math.round(w * 0.08);
+        const iy = Math.round(h * 0.08);
+        x0 = ix; y0 = iy; x1 = w - ix; y1 = h - iy;
+      }
+      // TL, TR, BR, BL — orderCorners will re-sort on apply if needed
+      state.flattenPoints = [
+        { x: x0, y: y0 },
+        { x: x1, y: y0 },
+        { x: x1, y: y1 },
+        { x: x0, y: y1 }
+      ];
+      state.dragCornerIndex = -1;
+      refreshFlattenUI();
+    }
+
     function refreshFlattenUI() {
       clearFlattenMarkers();
       syncQuadCanvasSize();
+      const labels = ["TL", "TR", "BR", "BL"];
       state.flattenPoints.forEach((p, i) => {
         const pos = canvasToWrap(p.x, p.y);
         const dot = document.createElement("div");
         dot.className = "corner-dot";
-        dot.textContent = String(i + 1);
+        dot.innerHTML = `<span class="hit"></span>${labels[i] || (i + 1)}`;
         dot.dataset.index = i;
         dot.style.left = pos.x + "px";
         dot.style.top = pos.y + "px";
-        // drag this corner
         dot.addEventListener("pointerdown", (e) => {
           e.preventDefault();
           e.stopPropagation();
           state.dragCornerIndex = i;
-          dot.setPointerCapture(e.pointerId);
+          dot.classList.add("dragging");
+          try { dot.setPointerCapture(e.pointerId); } catch (_) {}
         });
         canvasWrap.appendChild(dot);
       });
@@ -1297,9 +1429,29 @@
       qctx.clearRect(0, 0, qc.width, qc.height);
       const pts = state.flattenPoints;
       if (pts.length < 2) return;
-      qctx.strokeStyle = "rgba(59, 130, 246, 0.9)";
-      qctx.lineWidth = 2;
-      qctx.setLineDash([6, 4]);
+      // Dim outside the quad when all 4 points set
+      if (pts.length === 4) {
+        const ordered = (() => {
+          try { return orderCorners(pts); } catch (_) { return pts; }
+        })();
+        qctx.save();
+        qctx.fillStyle = "rgba(0,0,0,0.4)";
+        qctx.fillRect(0, 0, qc.width, qc.height);
+        qctx.globalCompositeOperation = "destination-out";
+        qctx.beginPath();
+        const a = canvasToWrap(ordered[0].x, ordered[0].y);
+        qctx.moveTo(a.x, a.y);
+        for (let i = 1; i < 4; i++) {
+          const p = canvasToWrap(ordered[i].x, ordered[i].y);
+          qctx.lineTo(p.x, p.y);
+        }
+        qctx.closePath();
+        qctx.fill();
+        qctx.restore();
+      }
+      qctx.strokeStyle = "rgba(59, 130, 246, 1)";
+      qctx.lineWidth = 3;
+      qctx.lineJoin = "round";
       qctx.beginPath();
       const p0 = canvasToWrap(pts[0].x, pts[0].y);
       qctx.moveTo(p0.x, p0.y);
@@ -1307,21 +1459,64 @@
         const p = canvasToWrap(pts[i].x, pts[i].y);
         qctx.lineTo(p.x, p.y);
       }
-      if (pts.length === 4) {
-        qctx.closePath();
-        qctx.fillStyle = "rgba(59, 130, 246, 0.12)";
-        qctx.fill();
-      }
+      if (pts.length === 4) qctx.closePath();
       qctx.stroke();
-      qctx.setLineDash([]);
+      // solid white inner stroke for contrast
+      qctx.strokeStyle = "rgba(255,255,255,0.5)";
+      qctx.lineWidth = 1;
+      qctx.stroke();
     }
 
     function addFlattenMarker(x, y) {
+      // unused in new flow — corners are pre-placed
+      if (state.flattenPoints.length >= 4) return;
       state.flattenPoints.push({ x, y });
       refreshFlattenUI();
     }
 
+    function updateStraightenDrag(clientX, clientY, index) {
+      if (index < 0 || !state.flattenPoints[index]) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((clientX - rect.left) / rect.width) * canvas.width;
+      const y = ((clientY - rect.top) / rect.height) * canvas.height;
+      state.flattenPoints[index] = {
+        x: Math.max(0, Math.min(canvas.width, x)),
+        y: Math.max(0, Math.min(canvas.height, y))
+      };
+      const dots = canvasWrap.querySelectorAll(".corner-dot");
+      if (dots[index]) {
+        const p = canvasToWrap(state.flattenPoints[index].x, state.flattenPoints[index].y);
+        dots[index].style.left = p.x + "px";
+        dots[index].style.top = p.y + "px";
+      }
+      drawQuad();
+      // loupe for precision on mobile
+      if (typeof updateCropLoupe === "function") {
+        const loupe = $("cropLoupe");
+        const loupeCv = $("loupeCanvas");
+        if (loupe && loupeCv) {
+          const ix = state.flattenPoints[index].x;
+          const iy = state.flattenPoints[index].y;
+          const zoom = 2.8;
+          const srcSize = 96 / zoom;
+          const lctx = loupeCv.getContext("2d");
+          lctx.fillStyle = "#111";
+          lctx.fillRect(0, 0, 96, 96);
+          lctx.drawImage(canvas, ix - srcSize / 2, iy - srcSize / 2, srcSize, srcSize, 0, 0, 96, 96);
+          const wrap = canvasWrap.getBoundingClientRect();
+          let lx = clientX - wrap.left - 48;
+          let ly = clientY - wrap.top - 120;
+          lx = Math.max(8, Math.min(wrap.width - 104, lx));
+          ly = Math.max(8, Math.min(wrap.height - 104, ly));
+          loupe.style.left = lx + "px";
+          loupe.style.top = ly + "px";
+          loupe.classList.add("visible");
+        }
+      }
+    }
+
     function setFilter(name) {
+      if (name === "greyscale") name = "grayscale";
       state.filter = name;
       document.querySelectorAll(".filter-chip").forEach(c => {
         c.classList.toggle("active", c.dataset.filter === name);
@@ -1444,6 +1639,25 @@
     }
     function invalidatePaperCache() { _paperCache = null; }
 
+    function getEraseFillColor(cx, cy, radius, cur, w, h) {
+      const mode = state.eraseMode;
+      if (mode === "color") {
+        return { ...state.eraseColor };
+      }
+      if (mode === "surround") {
+        // Strong local sample — seamless edge/bottom fill
+        return sampleSurroundingColor(cur, w, h, cx, cy, radius);
+      }
+      // paper mode: mostly global paper + slight local for seams
+      const paper = getPaperColorCached();
+      const local = sampleSurroundingColor(cur, w, h, cx, cy, radius);
+      return {
+        r: Math.round(paper.r * 0.85 + local.r * 0.15),
+        g: Math.round(paper.g * 0.85 + local.g * 0.15),
+        b: Math.round(paper.b * 0.85 + local.b * 0.15)
+      };
+    }
+
     function eraseAt(x, y) {
       if (!state.currentImageData || !state.baseImageData) return;
       const size = parseInt($("eraserSize").value, 10);
@@ -1456,15 +1670,7 @@
       const cur = state.currentImageData.data;
       const base = state.baseImageData.data;
 
-      // Use document paper color (stable, matches real page)
-      // Blend slightly with local surround so edges don't look pasted
-      const paper = getPaperColorCached();
-      const local = sampleSurroundingColor(cur, w, h, cx, cy, r);
-      const bg = {
-        r: Math.round(paper.r * 0.75 + local.r * 0.25),
-        g: Math.round(paper.g * 0.75 + local.g * 0.25),
-        b: Math.round(paper.b * 0.75 + local.b * 0.25)
-      };
+      const bg = getEraseFillColor(cx, cy, r, cur, w, h);
 
       for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
         for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
@@ -1475,9 +1681,9 @@
           if (px < 0 || py < 0 || px >= w || py >= h) continue;
 
           const dist = Math.sqrt(dist2);
-          // Strong center fill, soft edge so it matches paper cleanly
           const t = Math.max(0, 1 - dist / r);
-          const a = t * t * (3 - 2 * t); // smoothstep — solid paper fill
+          // Higher alpha in center for opaque paper-like cover
+          const a = Math.min(1, t * t * (3 - 2 * t) * 1.15);
 
           const i = (py * w + px) * 4;
           cur[i]     = Math.round(cur[i]     * (1 - a) + bg.r * a);
@@ -1491,7 +1697,39 @@
       ctx.putImageData(state.currentImageData, 0, 0);
     }
 
-    // ========== Auto Fix (clean bg, protect & redarken text) ==========
+    function pickColorAt(x, y) {
+      if (!state.currentImageData) return;
+      const w = state.currentImageData.width;
+      const h = state.currentImageData.height;
+      const px = Math.max(0, Math.min(w - 1, Math.round(x)));
+      const py = Math.max(0, Math.min(h - 1, Math.round(y)));
+      // Average a small patch for stable paper color
+      let rs = 0, gs = 0, bs = 0, n = 0;
+      const data = state.currentImageData.data;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const xx = px + dx, yy = py + dy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const i = (yy * w + xx) * 4;
+          rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; n++;
+        }
+      }
+      state.eraseColor = {
+        r: Math.round(rs / n),
+        g: Math.round(gs / n),
+        b: Math.round(bs / n)
+      };
+      state.eraseMode = "color";
+      state.eyedropMode = false;
+      document.querySelectorAll("[data-erase]").forEach(b => {
+        b.classList.toggle("active", b.dataset.erase === "color");
+      });
+      const sw = $("eraseColorSwatch");
+      if (sw) sw.style.background = `rgb(${state.eraseColor.r},${state.eraseColor.g},${state.eraseColor.b})`;
+      toast("Color picked — paint to fill");
+    }
+
+    // ========== Auto Fix (bg only — text pixels hard-locked) ==========
     function runAutoFix() {
       if (!state.baseImageData) {
         toast("No image loaded");
@@ -1503,119 +1741,124 @@
         try {
           const src = state.baseImageData;
           const { width, height, data } = src;
+          const n = width * height;
           const out = new ImageData(width, height);
           const d = out.data;
           const paper = estimatePaperColor(src);
           const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
+          const textCut = Math.min(paperLum - 38, 168);
 
-          // Local min luminance grid (for shadow detection only)
+          // Build text mask from ORIGINAL (same idea as Magic)
+          const lum = new Float32Array(n);
+          for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+            lum[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          }
+          const isText = new Uint8Array(n);
+          for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+              const p = y * width + x;
+              const L = lum[p];
+              if (L > textCut) continue;
+              let minL = 255, maxL = 0;
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  const v = lum[(y + dy) * width + (x + dx)];
+                  if (v < minL) minL = v;
+                  if (v > maxL) maxL = v;
+                }
+              }
+              const range = maxL - minL;
+              if (L < paperLum - 55 || (L < paperLum - 42 && range > 22) || (L < paperLum - 35 && range > 40)) {
+                isText[p] = 1;
+              }
+            }
+          }
+          // 2px dilate
+          const textDil = new Uint8Array(n);
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              let hit = 0;
+              for (let dy = -2; dy <= 2 && !hit; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                  const yy = y + dy, xx = x + dx;
+                  if (yy < 0 || xx < 0 || yy >= height || xx >= width) continue;
+                  if (isText[yy * width + xx]) { hit = 1; break; }
+                }
+              }
+              textDil[y * width + x] = hit;
+            }
+          }
+
           const grid = 16;
           const gw = Math.ceil(width / grid);
           const gh = Math.ceil(height / grid);
           const localMin = new Float32Array(gw * gh);
-          const localMax = new Float32Array(gw * gh);
-
           for (let gy = 0; gy < gh; gy++) {
             for (let gx = 0; gx < gw; gx++) {
-              let minL = 255, maxL = 0;
+              let minL = 255;
               const x0 = gx * grid, y0 = gy * grid;
               const x1 = Math.min(width, x0 + grid);
               const y1 = Math.min(height, y0 + grid);
               for (let y = y0; y < y1; y += 2) {
                 for (let x = x0; x < x1; x += 2) {
                   const i = (y * width + x) * 4;
-                  const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                  if (lum < minL) minL = lum;
-                  if (lum > maxL) maxL = lum;
+                  const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                  if (l < minL) minL = l;
                 }
               }
               localMin[gy * gw + gx] = minL;
-              localMax[gy * gw + gx] = maxL;
             }
           }
 
-          // Text threshold: pixels darker than this relative to local paper are text
-          const textCut = Math.min(paperLum - 45, 155);
-
           for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-              const i = (y * width + x) * 4;
-              let r = data[i], g = data[i + 1], b = data[i + 2];
-              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              const p = y * width + x;
+              const i = p * 4;
+              // Start from original always
+              d[i] = data[i]; d[i + 1] = data[i + 1]; d[i + 2] = data[i + 2]; d[i + 3] = data[i + 3];
+              if (textDil[p]) continue; // skip — locked at end anyway
 
+              let r = data[i], g = data[i + 1], b = data[i + 2];
+              const lumv = lum[p];
               const gx = Math.min(gw - 1, Math.floor(x / grid));
               const gy = Math.min(gh - 1, Math.floor(y / grid));
               const shadowFloor = localMin[gy * gw + gx];
-              const localRange = localMax[gy * gw + gx] - shadowFloor;
-
-              // --- TEXT PROTECTION & REDARKEN ---
-              // Dark pixels that look like ink stay dark (or get slightly darker for readability)
-              if (lum < textCut) {
-                // redarken: push further from paper
-                const darken = 0.18;
-                r = clamp(r * (1 - darken));
-                g = clamp(g * (1 - darken));
-                b = clamp(b * (1 - darken));
-                d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = data[i + 3];
-                continue;
-              }
-
-              // Mid-tones that are still clearly darker than paper & in high-contrast cell → soft text edges
-              if (lum < paperLum - 25 && localRange > 40) {
-                // only gentle lift, never full paper
-                const t = 0.12;
-                r = r * (1 - t) + paper.r * t;
-                g = g * (1 - t) + paper.g * t;
-                b = b * (1 - t) + paper.b * t;
-                d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); d[i + 3] = data[i + 3];
-                continue;
-              }
-
-              // --- BACKGROUND / SHADOW CLEANUP (only non-text) ---
               const shadowAmt = Math.max(0, (150 - shadowFloor) / 150);
 
-              // Lift soft shadows toward paper (mid-light pixels)
-              if (lum < paperLum - 5 && lum >= textCut) {
-                const lift = ((paperLum - lum) / paperLum) * (0.5 + 0.4 * shadowAmt);
+              if (lumv < paperLum - 5 && lumv >= textCut) {
+                const lift = ((paperLum - lumv) / paperLum) * (0.45 + 0.35 * shadowAmt);
                 r = r + (paper.r - r) * lift;
                 g = g + (paper.g - g) * lift;
                 b = b + (paper.b - b) * lift;
               }
-
-              // Professional edge repair — blend border gradients toward paper
               const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
               const edgeZone = Math.min(width, height) * 0.14;
-              if (edgeDist < edgeZone && lum > textCut + 8) {
+              if (edgeDist < edgeZone && lumv > textCut + 8) {
                 const edgeFactor = 1 - edgeDist / edgeZone;
-                // stronger near the very edge
                 const t = Math.min(0.92, edgeFactor * edgeFactor * 0.85 + edgeFactor * 0.25);
                 r = r * (1 - t) + paper.r * t;
                 g = g * (1 - t) + paper.g * t;
                 b = b * (1 - t) + paper.b * t;
               }
-
-              // Near-white dirt / yellow cast / uneven lighting
-              if (lum > 185) {
+              if (lumv > 185) {
                 const t = 0.35;
                 r = r * (1 - t) + paper.r * t;
                 g = g * (1 - t) + paper.g * t;
                 b = b * (1 - t) + paper.b * t;
               }
-
-              d[i] = clamp(r);
-              d[i + 1] = clamp(g);
-              d[i + 2] = clamp(b);
-              d[i + 3] = data[i + 3];
+              d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b);
             }
           }
 
-          // Despeckle only isolated dark dots that are surrounded by paper (true dust)
+          // Despeckle only non-text isolated dots
           const tmp = new Uint8ClampedArray(d);
           for (let y = 1; y < height - 1; y++) {
             for (let x = 1; x < width - 1; x++) {
-              const i = (y * width + x) * 4;
-              const lum = 0.299 * tmp[i] + 0.587 * tmp[i + 1] + 0.114 * tmp[i + 2];
-              if (lum > 160) continue;
+              const p = y * width + x;
+              if (textDil[p]) continue;
+              const i = p * 4;
+              const lv = 0.299 * tmp[i] + 0.587 * tmp[i + 1] + 0.114 * tmp[i + 2];
+              if (lv > 160) continue;
               let sr = 0, sg = 0, sb = 0, brightN = 0;
               for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
@@ -1626,7 +1869,6 @@
                   if (nl > 180) brightN++;
                 }
               }
-              // only remove if most neighbors are paper-bright (isolated speck, not stroke)
               if (brightN >= 6) {
                 d[i] = Math.round(sr / 8);
                 d[i + 1] = Math.round(sg / 8);
@@ -1635,15 +1877,14 @@
             }
           }
 
-          // Outer border strip → pure paper (removes table edges, desk, shadows at frame)
           const border = Math.max(2, Math.floor(Math.min(width, height) * 0.012));
           for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
+              const p = y * width + x;
+              if (textDil[p]) continue;
               const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
               if (edgeDist >= border) continue;
-              const i = (y * width + x) * 4;
-              const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-              if (lum < textCut) continue; // keep any text that touches edge
+              const i = p * 4;
               const t = 1 - edgeDist / border;
               d[i] = clamp(d[i] * (1 - t) + paper.r * t);
               d[i + 1] = clamp(d[i + 1] * (1 - t) + paper.g * t);
@@ -1651,12 +1892,22 @@
             }
           }
 
+          // HARD TEXT LOCK — 100% original pixels
+          for (let p = 0; p < n; p++) {
+            if (!textDil[p]) continue;
+            const i = p * 4;
+            d[i] = data[i];
+            d[i + 1] = data[i + 1];
+            d[i + 2] = data[i + 2];
+            d[i + 3] = data[i + 3];
+          }
+
           state.baseImageData = out;
           applyFilterAndDraw();
-          toast("Auto Fix done – edges & background cleaned");
+          toast("Fix done – text locked, background cleaned");
         } catch (err) {
           console.error(err);
-          toast("Auto Fix failed");
+          toast("Fix failed");
         } finally {
           showLoading(false);
         }
@@ -1705,7 +1956,7 @@
       }
       pushHistory();
       showLoading(true);
-      $("loadingMsg").textContent = "Flattening bends & healing…";
+      $("loadingMsg").textContent = "Straightening bends & healing…";
       setTimeout(() => {
         try {
           const src = state.baseImageData;
@@ -2130,10 +2381,10 @@
           $("flattenHint").classList.remove("visible");
           state.flattenPoints = [];
           setTool("move");
-          toast("Document flattened & measured");
+          toast("Straightened & measured");
         } catch (err) {
           console.error(err);
-          toast("Flatten failed");
+          toast("Straighten failed");
         } finally {
           showLoading(false);
         }
@@ -2265,10 +2516,60 @@
       const dy = (clientY - d.startClientY) / d.scaleY;
       state.cropRect = applyCropHandleDelta(d.type, dx, dy, d.orig);
       updateCropOverlay();
+      updateCropLoupe(clientX, clientY, d.type);
     }
 
     function endCropDrag() {
       state.cropDrag = null;
+      hideCropLoupe();
+    }
+
+    function hideCropLoupe() {
+      const loupe = $("cropLoupe");
+      if (loupe) loupe.classList.remove("visible");
+    }
+
+    function updateCropLoupe(clientX, clientY, handleType) {
+      const loupe = $("cropLoupe");
+      const loupeCv = $("loupeCanvas");
+      if (!loupe || !loupeCv || !state.cropRect || handleType === "move") {
+        hideCropLoupe();
+        return;
+      }
+      const r = state.cropRect;
+      // Sample point on the active corner/edge in image coords
+      let ix = r.x + r.w / 2, iy = r.y + r.h / 2;
+      switch (handleType) {
+        case "tl": ix = r.x; iy = r.y; break;
+        case "tr": ix = r.x + r.w; iy = r.y; break;
+        case "bl": ix = r.x; iy = r.y + r.h; break;
+        case "br": ix = r.x + r.w; iy = r.y + r.h; break;
+        case "tm": ix = r.x + r.w / 2; iy = r.y; break;
+        case "bm": ix = r.x + r.w / 2; iy = r.y + r.h; break;
+        case "ml": ix = r.x; iy = r.y + r.h / 2; break;
+        case "mr": ix = r.x + r.w; iy = r.y + r.h / 2; break;
+      }
+      const zoom = 2.5;
+      const srcSize = 96 / zoom;
+      const lctx = loupeCv.getContext("2d");
+      lctx.imageSmoothingEnabled = true;
+      lctx.fillStyle = "#111";
+      lctx.fillRect(0, 0, 96, 96);
+      // Draw from edit canvas
+      lctx.drawImage(
+        canvas,
+        ix - srcSize / 2, iy - srcSize / 2, srcSize, srcSize,
+        0, 0, 96, 96
+      );
+      // Position loupe above finger
+      const wrap = canvasWrap.getBoundingClientRect();
+      let lx = clientX - wrap.left - 48;
+      let ly = clientY - wrap.top - 110;
+      lx = Math.max(8, Math.min(wrap.width - 104, lx));
+      ly = Math.max(8, Math.min(wrap.height - 104, ly));
+      loupe.style.left = lx + "px";
+      loupe.style.top = ly + "px";
+      loupe.classList.add("visible");
     }
 
     function applyCrop() {
@@ -2428,9 +2729,13 @@
     function onPointerDown(e) {
       e.preventDefault();
       const pos = getCanvasPos(e);
+      if (state.eyedropMode || state.eraseMode === "eyedrop") {
+        pickColorAt(pos.x, pos.y);
+        return;
+      }
       if (state.tool === "eraser") {
         pushHistory();
-        invalidatePaperCache(); // fresh paper sample each stroke
+        invalidatePaperCache();
         state.isDrawing = true;
         eraseAt(pos.x, pos.y);
         state.lastX = pos.x;
@@ -2445,15 +2750,8 @@
         // crop is handled by handles / crop box — ignore canvas taps
         return;
       } else if (state.tool === "flatten") {
-        if (state.flattenPoints.length >= 4) {
-          state.flattenPoints = [];
-          clearFlattenMarkers();
-        }
-        addFlattenMarker(pos.x, pos.y);
-        const n = state.flattenPoints.length;
-        $("flattenHint").textContent =
-          n < 4 ? `Corner ${n}/4 – drag dots to adjust` : "Adjust dots if needed, then Apply Flatten";
-        if (n === 4) toast("Ready – drag corners or Apply Flatten");
+        // Corners are pre-placed — only drag the blue dots (ignore canvas taps)
+        return;
       } else {
         state.isPanning = true;
       }
@@ -2464,12 +2762,7 @@
       const pos = getCanvasPos(e);
 
       if (state.dragCornerIndex >= 0 && state.tool === "flatten") {
-        const i = state.dragCornerIndex;
-        state.flattenPoints[i] = {
-          x: Math.max(0, Math.min(canvas.width, pos.x)),
-          y: Math.max(0, Math.min(canvas.height, pos.y))
-        };
-        refreshFlattenUI();
+        updateStraightenDrag(e.clientX, e.clientY, state.dragCornerIndex);
         return;
       }
 
@@ -2508,25 +2801,22 @@
 
     // Global move/up so corner dragging works after dots are recreated
     window.addEventListener("pointermove", (e) => {
-      if (state.dragCornerIndex < 0) return;
+      if (state.dragCornerIndex < 0 || state.tool !== "flatten") return;
       e.preventDefault();
-      const pos = getCanvasPos(e);
-      const i = state.dragCornerIndex;
-      state.flattenPoints[i] = {
-        x: Math.max(0, Math.min(canvas.width, pos.x)),
-        y: Math.max(0, Math.min(canvas.height, pos.y))
-      };
-      // update only positions without full recreate for smooth drag
-      const dots = canvasWrap.querySelectorAll(".corner-dot");
-      if (dots[i]) {
-        const p = canvasToWrap(state.flattenPoints[i].x, state.flattenPoints[i].y);
-        dots[i].style.left = p.x + "px";
-        dots[i].style.top = p.y + "px";
-      }
-      drawQuad();
+      updateStraightenDrag(e.clientX, e.clientY, state.dragCornerIndex);
     }, { passive: false });
-    window.addEventListener("pointerup", () => { state.dragCornerIndex = -1; });
-    window.addEventListener("pointercancel", () => { state.dragCornerIndex = -1; });
+    window.addEventListener("pointerup", () => {
+      if (state.dragCornerIndex >= 0) {
+        canvasWrap.querySelectorAll(".corner-dot").forEach(d => d.classList.remove("dragging"));
+        if (typeof hideCropLoupe === "function") hideCropLoupe();
+      }
+      state.dragCornerIndex = -1;
+    });
+    window.addEventListener("pointercancel", () => {
+      canvasWrap.querySelectorAll(".corner-dot").forEach(d => d.classList.remove("dragging"));
+      if (typeof hideCropLoupe === "function") hideCropLoupe();
+      state.dragCornerIndex = -1;
+    });
 
     window.addEventListener("resize", () => {
       if (state.cropRect) updateCropOverlay();
@@ -2566,6 +2856,117 @@
         chip.classList.add("active");
         state.exportQuality = parseFloat(chip.dataset.quality);
       });
+    });
+
+    // Eraser fill modes
+    document.querySelectorAll("[data-erase]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-erase]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const mode = btn.dataset.erase;
+        if (mode === "eyedrop") {
+          state.eyedropMode = true;
+          state.eraseMode = "eyedrop";
+          toast("Tap the page to pick a color");
+        } else {
+          state.eyedropMode = false;
+          state.eraseMode = mode;
+          if (mode === "paper") toast("Fill with paper color");
+          else if (mode === "surround") toast("Fill with surrounding color");
+          else toast("Fill with selected color");
+        }
+      });
+    });
+
+    // Resize
+    function resizeTo(targetW, targetH) {
+      if (!state.baseImageData) return;
+      pushHistory();
+      const src = state.baseImageData;
+      const sw = src.width, sh = src.height;
+      let tw = targetW, th = targetH;
+      if (!th) {
+        th = Math.round(sh * (tw / sw));
+      }
+      if (!tw) {
+        tw = Math.round(sw * (th / sh));
+      }
+      tw = Math.max(32, Math.round(tw));
+      th = Math.max(32, Math.round(th));
+      const off = document.createElement("canvas");
+      off.width = tw;
+      off.height = th;
+      const octx = off.getContext("2d");
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = "high";
+      // draw source via temp canvas
+      const tmp = document.createElement("canvas");
+      tmp.width = sw;
+      tmp.height = sh;
+      tmp.getContext("2d").putImageData(src, 0, 0);
+      octx.drawImage(tmp, 0, 0, tw, th);
+      state.baseImageData = octx.getImageData(0, 0, tw, th);
+      applyFilterAndDraw();
+      toast(`Resized to ${tw}×${th}`);
+    }
+
+    function applyResizeOption(key) {
+      if (!state.baseImageData) return;
+      const sw = state.baseImageData.width;
+      const sh = state.baseImageData.height;
+      if (key === "100") {
+        toast(`Already ${sw}×${sh}`);
+        return;
+      }
+      if (key === "75" || key === "50" || key === "25") {
+        const scale = parseInt(key, 10) / 100;
+        resizeTo(sw * scale, sh * scale);
+        return;
+      }
+      if (key.startsWith("w")) {
+        const w = parseInt(key.slice(1), 10);
+        resizeTo(w, null);
+        return;
+      }
+      if (key === "a4") {
+        // A4 at 150 dpi ≈ 1240 × 1754
+        const portrait = sh >= sw;
+        if (portrait) resizeTo(1240, 1754);
+        else resizeTo(1754, 1240);
+        return;
+      }
+      if (key === "letter") {
+        // Letter at 150 dpi ≈ 1275 × 1650
+        const portrait = sh >= sw;
+        if (portrait) resizeTo(1275, 1650);
+        else resizeTo(1650, 1275);
+        return;
+      }
+    }
+
+    document.querySelectorAll("[data-resize]").forEach(btn => {
+      btn.addEventListener("click", () => applyResizeOption(btn.dataset.resize));
+    });
+
+    // Contrast adjust
+    $("btnApplyContrast")?.addEventListener("click", () => {
+      if (!state.baseImageData) return;
+      pushHistory();
+      const factor = parseInt($("contrastSlider").value, 10) / 100;
+      const src = state.baseImageData;
+      const { width, height, data } = src;
+      const out = new ImageData(width, height);
+      const d = out.data;
+      const intercept = 128 * (1 - factor);
+      for (let i = 0; i < data.length; i += 4) {
+        d[i] = clamp(data[i] * factor + intercept);
+        d[i + 1] = clamp(data[i + 1] * factor + intercept);
+        d[i + 2] = clamp(data[i + 2] * factor + intercept);
+        d[i + 3] = data[i + 3];
+      }
+      state.baseImageData = out;
+      applyFilterAndDraw();
+      toast("Contrast applied");
     });
 
     // ========== Multi-page ==========
@@ -2865,260 +3266,440 @@
       });
     }
 
+    function applyAutoCropSilent() {
+      const bounds = detectDocumentBounds();
+      if (!bounds || bounds.w < 40 || bounds.h < 40) return false;
+      const { x, y, w, h } = bounds;
+      const sx = Math.max(0, Math.floor(x));
+      const sy = Math.max(0, Math.floor(y));
+      const sw = Math.min(state.baseImageData.width - sx, Math.floor(w));
+      const sh = Math.min(state.baseImageData.height - sy, Math.floor(h));
+      if (sw < 50 || sh < 50) return false;
+      if (sw >= state.baseImageData.width * 0.98 && sh >= state.baseImageData.height * 0.98) return false;
+      const baseOff = document.createElement("canvas");
+      baseOff.width = sw;
+      baseOff.height = sh;
+      const bctx = baseOff.getContext("2d");
+      bctx.putImageData(state.baseImageData, -sx, -sy);
+      state.baseImageData = bctx.getImageData(0, 0, sw, sh);
+      if (state.currentImageData) {
+        const off = document.createElement("canvas");
+        off.width = sw;
+        off.height = sh;
+        off.getContext("2d").putImageData(state.currentImageData, -sx, -sy);
+        state.currentImageData = off.getContext("2d").getImageData(0, 0, sw, sh);
+      }
+      return true;
+    }
+
+    function cloneImageData(img) {
+      const out = new ImageData(img.width, img.height);
+      out.data.set(img.data);
+      return out;
+    }
+
     function runMagicEnhance() {
       if (!state.baseImageData) {
         toast("No image loaded");
         return;
       }
       showLoading(true);
-      $("loadingMsg").textContent = "Magic Enhance…";
-
-      // Run heal → autofix → deblur as sequential promises
-      const quiet = { silent: true };
+      $("loadingMsg").textContent = "Cropping…";
       setTimeout(() => {
         try {
-          // Snapshot for single undo
-          // pushHistory is called inside each — remove intermediate by only pushing once
-          // We'll push once here and skip inside by using direct pipeline
+          pushHistory();
+          applyAutoCropSilent();
+          // Freeze ORIGINAL after crop — text lock always refers to this
+          const original = cloneImageData(state.baseImageData);
 
-          // 1) Illumination flatten + heal (core of runHeal without UI)
-          magicHealCore();
-          $("loadingMsg").textContent = "Cleaning background…";
-          setTimeout(() => {
-            try {
-              magicAutoFixCore();
-              $("loadingMsg").textContent = "Sharpening text…";
-              setTimeout(() => {
-                try {
-                  magicDeblurCore();
-                  // Auto-crop if document bounds are clear
-                  $("loadingMsg").textContent = "Detecting edges…";
-                  const bounds = detectDocumentBounds();
-                  if (bounds && bounds.w > 40 && bounds.h > 40) {
-                    const { x, y, w, h } = bounds;
-                    const sx = Math.max(0, Math.floor(x));
-                    const sy = Math.max(0, Math.floor(y));
-                    const sw = Math.min(state.baseImageData.width - sx, Math.floor(w));
-                    const sh = Math.min(state.baseImageData.height - sy, Math.floor(h));
-                    if (sw > 50 && sh > 50 && (sw < state.baseImageData.width * 0.98 || sh < state.baseImageData.height * 0.98)) {
-                      const baseOff = document.createElement("canvas");
-                      baseOff.width = sw;
-                      baseOff.height = sh;
-                      baseOff.getContext("2d").putImageData(state.baseImageData, -sx, -sy);
-                      state.baseImageData = baseOff.getContext("2d").getImageData(0, 0, sw, sh);
-                    }
-                  }
-                  invalidatePaperCache();
-                  applyFilterAndDraw();
-                  if (navigator.vibrate) navigator.vibrate(30);
-                  toast("Scan ready — export or add another page");
-                } catch (e) {
-                  console.error(e);
-                  toast("Enhance partially failed");
-                } finally {
-                  showLoading(false);
-                  $("loadingMsg").textContent = "Processing…";
-                }
-              }, 30);
-            } catch (e) {
-              console.error(e);
+          const stages = [
+            { msg: "Pass 1/3 — folds & lighting…", intensity: 1.0 },
+            { msg: "Pass 2/3 — shadows & edges…", intensity: 0.75 },
+            { msg: "Pass 3/3 — polish…", intensity: 0.5 }
+          ];
+
+          const runStage = (idx) => {
+            if (idx >= stages.length) {
+              // Final hard lock from frozen original
+              hardLockTextFromOriginal(original);
+              invalidatePaperCache();
+              applyFilterAndDraw();
+              if (navigator.vibrate) navigator.vibrate(40);
               showLoading(false);
-              toast("Enhance failed");
+              $("loadingMsg").textContent = "Processing…";
+              toast("Magic complete — 3-pass restore, text locked");
+              return;
             }
-          }, 30);
+            $("loadingMsg").textContent = stages[idx].msg;
+            setTimeout(() => {
+              try {
+                proDocumentRestore({
+                  skipHistory: true,
+                  originalData: original,
+                  intensity: stages[idx].intensity,
+                  skipFinalTextLock: idx < stages.length - 1 // lock only on last pass + hardLock
+                });
+                runStage(idx + 1);
+              } catch (e) {
+                console.error(e);
+                showLoading(false);
+                toast("Restore failed");
+              }
+            }, 30);
+          };
+          runStage(0);
         } catch (e) {
           console.error(e);
           showLoading(false);
-          toast("Enhance failed");
+          toast("Restore failed");
         }
       }, 30);
     }
 
-    function magicHealCore() {
-      // Reuse runHeal by temporarily suppressing history double-push
-      // Inline: call the same illumination logic via runHeal's path
-      // Simplest reliable path: invoke runHeal/runAutoFix/runDeblur but
-      // push history only once at start of magic
-      pushHistory();
-      // Directly execute heal body by calling runHeal without pushHistory
-      // Patch pushHistory temporarily
-      const realPush = pushHistory;
-      window._magicBatch = true;
-      pushHistory = function () { /* skip during batch */ };
-      try {
-        // Synchronous path extraction - call internal by forcing
-        // Since runHeal is async setTimeout, we need the core sync.
-
-        // Inline minimal heal (illumination) 
-        const src = state.baseImageData;
-        const { width: w, height: h, data } = src;
-        const paper = estimatePaperColor(src);
-        const paperLum = Math.max(1, 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b);
-        const lum = new Float32Array(w * h);
-        for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-          lum[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        }
-        const blurR = Math.max(8, Math.round(Math.min(w, h) * 0.035));
-        const illum = boxBlurChannel(lum, w, h, blurR);
-        const illum2 = boxBlurChannel(illum, w, h, Math.max(4, Math.round(blurR * 0.5)));
-        const isText = new Uint8Array(w * h);
-        for (let y = 1; y < h - 1; y++) {
-          for (let x = 1; x < w - 1; x++) {
-            const p = y * w + x;
-            if (lum[p] > paperLum - 45) continue;
-            let minL = 255, maxL = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                const l = lum[(y + dy) * w + (x + dx)];
-                if (l < minL) minL = l;
-                if (l > maxL) maxL = l;
-              }
+    /** Copy original text pixels onto current image using mask from original */
+    function hardLockTextFromOriginal(original) {
+      if (!original || !state.baseImageData) return;
+      if (original.width !== state.baseImageData.width || original.height !== state.baseImageData.height) return;
+      const w = original.width, h = original.height, n = w * h;
+      const odata = original.data;
+      const d = state.baseImageData.data;
+      const paper = estimatePaperColor(original);
+      const paperLum = Math.max(1, 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b);
+      const textCut = Math.min(paperLum - 38, 168);
+      const lum = new Float32Array(n);
+      for (let i = 0, p = 0; i < odata.length; i += 4, p++) {
+        lum[p] = 0.299 * odata[i] + 0.587 * odata[i + 1] + 0.114 * odata[i + 2];
+      }
+      const isText = new Uint8Array(n);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const p = y * w + x;
+          const L = lum[p];
+          if (L > textCut) continue;
+          let minL = 255, maxL = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const v = lum[(y + dy) * w + (x + dx)];
+              if (v < minL) minL = v;
+              if (v > maxL) maxL = v;
             }
-            if (maxL - minL > 40 && lum[p] < paperLum - 55) isText[p] = 1;
+          }
+          const range = maxL - minL;
+          if (L < paperLum - 55 || (L < paperLum - 42 && range > 22) || (L < paperLum - 35 && range > 40)) {
+            isText[p] = 1;
           }
         }
-        const out = new ImageData(w, h);
-        const d = out.data;
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let hit = 0;
+          for (let dy = -2; dy <= 2 && !hit; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              const yy = y + dy, xx = x + dx;
+              if (yy < 0 || xx < 0 || yy >= h || xx >= w) continue;
+              if (isText[yy * w + xx]) { hit = 1; break; }
+            }
+          }
+          if (!hit) continue;
+          const i = (y * w + x) * 4;
+          d[i] = odata[i]; d[i + 1] = odata[i + 1]; d[i + 2] = odata[i + 2]; d[i + 3] = odata[i + 3];
+        }
+      }
+    }
+
+    /**
+     * Progressive document restore (single pass). Call multiple times with decreasing intensity.
+     * opts.originalData — image for text lock (frozen source)
+     * opts.intensity — 0..1 strength of corrections
+     * opts.skipHistory — don't push undo
+     * opts.skipFinalTextLock — defer text lock to outer caller
+     */
+    function proDocumentRestore(opts) {
+      opts = opts || {};
+      if (!opts.skipHistory) pushHistory();
+      const src = state.baseImageData;
+      const original = opts.originalData || src;
+      const intensity = opts.intensity == null ? 1 : opts.intensity;
+      const w = src.width, h = src.height;
+      const data = src.data;
+      const n = w * h;
+
+      const paper = estimatePaperColor(src);
+      const paperLum = Math.max(1, 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b);
+
+      // Luminance
+      const lum = new Float32Array(n);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        lum[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+
+      // --- Text mask: adaptive dark + Sobel-ish local contrast ---
+      const isText = new Uint8Array(n);
+      const textCut = Math.min(paperLum - 38, 168);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const p = y * w + x;
+          const L = lum[p];
+          if (L > textCut) continue;
+          // Local range in 3x3
+          let minL = 255, maxL = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const v = lum[(y + dy) * w + (x + dx)];
+              if (v < minL) minL = v;
+              if (v > maxL) maxL = v;
+            }
+          }
+          const range = maxL - minL;
+          // Ink: dark enough, or dark with structure
+          if (L < paperLum - 55 || (L < paperLum - 42 && range > 22) || (L < paperLum - 35 && range > 40)) {
+            isText[p] = 1;
+          }
+        }
+      }
+      // Dilate text mask 2px — covers anti-aliased letter edges so nothing eats ink
+      const textDil = new Uint8Array(n);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const p = y * w + x;
+          let hit = 0;
+          for (let dy = -2; dy <= 2 && !hit; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              const yy = y + dy, xx = x + dx;
+              if (yy < 0 || xx < 0 || yy >= h || xx >= w) continue;
+              if (isText[yy * w + xx]) { hit = 1; break; }
+            }
+          }
+          textDil[p] = hit;
+        }
+      }
+
+      // --- Multi-scale illumination (coarse + medium) ---
+      const r1 = Math.max(12, Math.round(Math.min(w, h) * 0.045));
+      const r2 = Math.max(6, Math.round(r1 * 0.45));
+      const illumC = boxBlurChannel(lum, w, h, r1);
+      const illumM = boxBlurChannel(lum, w, h, r2);
+      // Combine: mostly coarse for bends, medium for local soft shadows
+      const illum = new Float32Array(n);
+      for (let p = 0; p < n; p++) {
+        illum[p] = illumC[p] * 0.65 + illumM[p] * 0.35;
+      }
+
+      // Working RGB float buffers
+      let R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        R[p] = data[i]; G[p] = data[i + 1]; B[p] = data[i + 2];
+      }
+
+      // Pass A: illumination normalize — SKIP text pixels entirely
+      const gainCap = 1.15 + 0.25 * intensity; // progressive: stronger early passes
+      for (let p = 0; p < n; p++) {
+        if (textDil[p]) continue;
+        const I = Math.max(16, illum[p]);
+        let gain = paperLum / I;
+        // Blend gain toward 1 based on intensity for progressive refinement
+        gain = 1 + (Math.min(gainCap, Math.max(0.88, gain)) - 1) * intensity;
+        R[p] *= gain; G[p] *= gain; B[p] *= gain;
+      }
+
+      // Pass B: fold line removal — thin dark ridges that are NOT text
+      // Horizontal and vertical ridge detector
+      const fold = new Uint8Array(n);
+      for (let y = 2; y < h - 2; y++) {
+        for (let x = 2; x < w - 2; x++) {
+          const p = y * w + x;
+          if (textDil[p]) continue;
+          const L = 0.299 * R[p] + 0.587 * G[p] + 0.114 * B[p];
+          if (L > paperLum - 10) continue;
+          const Lp = (pp) => 0.299 * R[pp] + 0.587 * G[pp] + 0.114 * B[pp];
+          const lL = Lp(y * w + (x - 2)), lR = Lp(y * w + (x + 2));
+          const lU = Lp((y - 2) * w + x), lD = Lp((y + 2) * w + x);
+          // Ridge: darker than both sides by margin
+          const hRidge = (lL > L + 10 && lR > L + 10);
+          const vRidge = (lU > L + 10 && lD > L + 10);
+          if (hRidge || vRidge) fold[p] = 1;
+        }
+      }
+      // Dilate fold mask slightly
+      const foldD = new Uint8Array(n);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          let hit = 0;
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++)
+              if (fold[(y + dy) * w + (x + dx)]) hit = 1;
+          foldD[y * w + x] = hit;
+        }
+      }
+      // Inpaint folds from bright neighbors (more passes when intensity high)
+      const foldPasses = intensity > 0.8 ? 4 : intensity > 0.55 ? 3 : 2;
+      for (let pass = 0; pass < foldPasses; pass++) {
+        const nR = new Float32Array(R), nG = new Float32Array(G), nB = new Float32Array(B);
+        for (let y = 2; y < h - 2; y++) {
+          for (let x = 2; x < w - 2; x++) {
+            const p = y * w + x;
+            if (!foldD[p] || textDil[p]) continue;
+            let rs = 0, gs = 0, bs = 0, cnt = 0;
+            for (let dy = -3; dy <= 3; dy++) {
+              for (let dx = -3; dx <= 3; dx++) {
+                const np = (y + dy) * w + (x + dx);
+                if (foldD[np] || textDil[np]) continue;
+                const nl = 0.299 * R[np] + 0.587 * G[np] + 0.114 * B[np];
+                if (nl < paperLum - 18) continue;
+                rs += R[np]; gs += G[np]; bs += B[np]; cnt++;
+              }
+            }
+            if (cnt >= 3) {
+              const t = Math.min(0.95, (0.45 + pass * 0.12) * intensity);
+              nR[p] = R[p] * (1 - t) + (rs / cnt) * t;
+              nG[p] = G[p] * (1 - t) + (gs / cnt) * t;
+              nB[p] = B[p] * (1 - t) + (bs / cnt) * t;
+            } else {
+              const t = 0.5 * intensity;
+              nR[p] = R[p] * (1 - t) + paper.r * t;
+              nG[p] = G[p] * (1 - t) + paper.g * t;
+              nB[p] = B[p] * (1 - t) + paper.b * t;
+            }
+          }
+        }
+        R = nR; G = nG; B = nB;
+      }
+
+      // Pass C: edge / border perfection — smooth ramp to paper
+      const edgeZone = Math.max(8, Math.round(Math.min(w, h) * 0.06));
+      const hardBorder = Math.max(2, Math.round(Math.min(w, h) * 0.008));
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const p = y * w + x;
+          if (textDil[p]) continue;
+          const edgeDist = Math.min(x, y, w - 1 - x, h - 1 - y);
+          if (edgeDist < hardBorder) {
+            // Outer rim → pure paper
+            R[p] = paper.r; G[p] = paper.g; B[p] = paper.b;
+          } else if (edgeDist < edgeZone) {
+            const t = Math.pow(1 - (edgeDist - hardBorder) / (edgeZone - hardBorder), 1.4);
+            const L = 0.299 * R[p] + 0.587 * G[p] + 0.114 * B[p];
+            // Only blend if not darker than mid-text (extra safety)
+            if (L > textCut - 5) {
+              R[p] = R[p] * (1 - t) + paper.r * t;
+              G[p] = G[p] * (1 - t) + paper.g * t;
+              B[p] = B[p] * (1 - t) + paper.b * t;
+            }
+          }
+        }
+      }
+
+      // Pass D: unify background to paper (scaled by intensity)
+      for (let p = 0; p < n; p++) {
+        if (textDil[p]) continue;
+        const L = 0.299 * R[p] + 0.587 * G[p] + 0.114 * B[p];
+        if (L > paperLum - 18) {
+          const t = Math.min(0.85, ((L - (paperLum - 18)) / 40 + 0.4) * intensity);
+          R[p] = R[p] * (1 - t) + paper.r * t;
+          G[p] = G[p] * (1 - t) + paper.g * t;
+          B[p] = B[p] * (1 - t) + paper.b * t;
+        } else if (L > textCut && L < paperLum - 8) {
+          const t = Math.min(0.65, (paperLum - L) / paperLum * 0.7 * intensity);
+          R[p] = R[p] * (1 - t) + paper.r * t;
+          G[p] = G[p] * (1 - t) + paper.g * t;
+          B[p] = B[p] * (1 - t) + paper.b * t;
+        }
+      }
+
+      // Write processed background
+      const out = new ImageData(w, h);
+      const d = out.data;
+      for (let p = 0; p < n; p++) {
+        const i = p * 4;
+        d[i] = clamp(R[p]);
+        d[i + 1] = clamp(G[p]);
+        d[i + 2] = clamp(B[p]);
+        d[i + 3] = 255;
+      }
+
+      // Final border → paper (non-text only)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const edgeDist = Math.min(x, y, w - 1 - x, h - 1 - y);
+          if (edgeDist > hardBorder) continue;
+          const p = y * w + x;
+          if (textDil[p]) continue;
+          const i = p * 4;
+          d[i] = paper.r; d[i + 1] = paper.g; d[i + 2] = paper.b;
+        }
+      }
+
+      // Text lock from frozen original (or current src if standalone)
+      if (!opts.skipFinalTextLock) {
+        const lockSrc = (original && original.width === w && original.height === h) ? original.data : data;
+        // Rebuild mask from original for safety
+        const oLum = new Float32Array(n);
+        for (let i = 0, p = 0; i < lockSrc.length; i += 4, p++) {
+          oLum[p] = 0.299 * lockSrc[i] + 0.587 * lockSrc[i + 1] + 0.114 * lockSrc[i + 2];
+        }
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
             const p = y * w + x;
-            const i = p * 4;
-            let r = data[i], g = data[i + 1], b = data[i + 2];
-            const I = Math.max(8, illum2[p]);
-            let gain = Math.min(2.2, Math.max(0.7, paperLum / I));
-            if (isText[p]) {
-              const mild = 1 + (gain - 1) * 0.15;
-              r = clamp(r * mild); g = clamp(g * mild); b = clamp(b * mild);
-            } else {
-              r = clamp(r * gain); g = clamp(g * gain); b = clamp(b * gain);
-              const nL = 0.299 * r + 0.587 * g + 0.114 * b;
-              if (nL < paperLum - 8) {
-                const t = Math.min(0.85, (paperLum - nL) / paperLum * 0.9);
-                r = r * (1 - t) + paper.r * t;
-                g = g * (1 - t) + paper.g * t;
-                b = b * (1 - t) + paper.b * t;
+            let hit = textDil[p];
+            if (!hit) {
+              // also check original darkness
+              if (oLum[p] < textCut) {
+                let minL = 255, maxL = 0;
+                for (let dy = -1; dy <= 1; dy++) {
+                  for (let dx = -1; dx <= 1; dx++) {
+                    const yy = Math.min(h - 1, Math.max(0, y + dy));
+                    const xx = Math.min(w - 1, Math.max(0, x + dx));
+                    const v = oLum[yy * w + xx];
+                    if (v < minL) minL = v;
+                    if (v > maxL) maxL = v;
+                  }
+                }
+                if (oLum[p] < paperLum - 50 || (maxL - minL > 22 && oLum[p] < paperLum - 40)) hit = 1;
               }
             }
-            d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); d[i + 3] = 255;
+            if (!hit) continue;
+            // 2px neighborhood already in textDil; restore pixel
+            const i = p * 4;
+            d[i] = lockSrc[i];
+            d[i + 1] = lockSrc[i + 1];
+            d[i + 2] = lockSrc[i + 2];
+            d[i + 3] = lockSrc[i + 3];
           }
         }
-        state.baseImageData = out;
-      } finally {
-        pushHistory = realPush;
-        window._magicBatch = false;
       }
-    }
 
-    function magicAutoFixCore() {
-      // Call existing runAutoFix but skip history & UI
-      const src = state.baseImageData;
-      const { width, height, data } = src;
-      const out = new ImageData(width, height);
-      const d = out.data;
-      const paper = estimatePaperColor(src);
-      const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
-      const grid = 16;
-      const gw = Math.ceil(width / grid);
-      const gh = Math.ceil(height / grid);
-      const localMin = new Float32Array(gw * gh);
-      const localMax = new Float32Array(gw * gh);
-      for (let gy = 0; gy < gh; gy++) {
-        for (let gx = 0; gx < gw; gx++) {
-          let minL = 255, maxL = 0;
-          const x0 = gx * grid, y0 = gy * grid;
-          const x1 = Math.min(width, x0 + grid);
-          const y1 = Math.min(height, y0 + grid);
-          for (let y = y0; y < y1; y += 2) {
-            for (let x = x0; x < x1; x += 2) {
-              const i = (y * width + x) * 4;
-              const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-              if (lum < minL) minL = lum;
-              if (lum > maxL) maxL = lum;
-            }
-          }
-          localMin[gy * gw + gx] = minL;
-          localMax[gy * gw + gx] = maxL;
-        }
-      }
-      const textCut = Math.min(paperLum - 45, 155);
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const i = (y * width + x) * 4;
-          let r = data[i], g = data[i + 1], b = data[i + 2];
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          const gx = Math.min(gw - 1, Math.floor(x / grid));
-          const gy = Math.min(gh - 1, Math.floor(y / grid));
-          const shadowFloor = localMin[gy * gw + gx];
-          const localRange = localMax[gy * gw + gx] - shadowFloor;
-          if (lum < textCut) {
-            const darken = 0.15;
-            d[i] = clamp(r * (1 - darken));
-            d[i + 1] = clamp(g * (1 - darken));
-            d[i + 2] = clamp(b * (1 - darken));
-            d[i + 3] = data[i + 3];
-            continue;
-          }
-          const shadowAmt = Math.max(0, (150 - shadowFloor) / 150);
-          if (lum < paperLum - 5 && lum >= textCut) {
-            const lift = ((paperLum - lum) / paperLum) * (0.5 + 0.4 * shadowAmt);
-            r = r + (paper.r - r) * lift;
-            g = g + (paper.g - g) * lift;
-            b = b + (paper.b - b) * lift;
-          }
-          const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
-          const edgeZone = Math.min(width, height) * 0.14;
-          if (edgeDist < edgeZone && lum > textCut + 8) {
-            const edgeFactor = 1 - edgeDist / edgeZone;
-            const t = Math.min(0.92, edgeFactor * edgeFactor * 0.85 + edgeFactor * 0.25);
-            r = r * (1 - t) + paper.r * t;
-            g = g * (1 - t) + paper.g * t;
-            b = b * (1 - t) + paper.b * t;
-          }
-          if (lum > 185) {
-            const t = 0.35;
-            r = r * (1 - t) + paper.r * t;
-            g = g * (1 - t) + paper.g * t;
-            b = b * (1 - t) + paper.b * t;
-          }
-          d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); d[i + 3] = data[i + 3];
-        }
-      }
-      const border = Math.max(2, Math.floor(Math.min(width, height) * 0.012));
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y);
-          if (edgeDist >= border) continue;
-          const i = (y * width + x) * 4;
-          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          if (lum < textCut) continue;
-          const t = 1 - edgeDist / border;
-          d[i] = clamp(d[i] * (1 - t) + paper.r * t);
-          d[i + 1] = clamp(d[i + 1] * (1 - t) + paper.g * t);
-          d[i + 2] = clamp(d[i + 2] * (1 - t) + paper.b * t);
-        }
-      }
       state.baseImageData = out;
     }
 
+    // Keep legacy cores as thin wrappers for individual tool buttons
+    function magicHealCore() {
+      proDocumentRestore({ intensity: 1 });
+    }
+
+    function magicAutoFixCore() {
+      // no-op when called from old paths — pro restore is complete
+    }
+
     function magicDeblurCore() {
+      // light text-only deblur if user taps Deblur after Magic
       const src = state.baseImageData;
       const { width: w, height: h, data } = src;
       const blur1 = blurRGB(data, w, h, 1);
-      const blur2 = blurRGB(data, w, h, 2);
       const out = new ImageData(w, h);
       const d = out.data;
+      const paper = estimatePaperColor(src);
+      const paperLum = 0.299 * paper.r + 0.587 * paper.g + 0.114 * paper.b;
       for (let p = 0; p < w * h; p++) {
         const i = p * 4;
         const or_ = data[i], og = data[i + 1], ob = data[i + 2];
         const lum = 0.299 * or_ + 0.587 * og + 0.114 * ob;
-        let a1 = 1.8, a2 = 0.9;
-        if (lum > 220) { a1 = 0.4; a2 = 0.2; }
-        else if (lum > 180) { a1 = 1.0; a2 = 0.5; }
-        else if (lum < 30) { a1 = 1.2; a2 = 0.6; }
-        else { a1 = 2.1; a2 = 1.1; }
-        d[i] = clamp(or_ + a1 * (or_ - blur1[0][p]) + a2 * (or_ - blur2[0][p]));
-        d[i + 1] = clamp(og + a1 * (og - blur1[1][p]) + a2 * (og - blur2[1][p]));
-        d[i + 2] = clamp(ob + a1 * (ob - blur1[2][p]) + a2 * (ob - blur2[2][p]));
+        let amt = 1.6;
+        if (lum > paperLum - 15) amt = 0.25;
+        else if (lum > 160) amt = 0.7;
+        else if (lum < 40) amt = 1.0;
+        d[i] = clamp(or_ + amt * (or_ - blur1[0][p]));
+        d[i + 1] = clamp(og + amt * (og - blur1[1][p]));
+        d[i + 2] = clamp(ob + amt * (ob - blur1[2][p]));
         d[i + 3] = 255;
       }
       state.baseImageData = out;
