@@ -4,8 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0f0f12" />
+  <meta name="description" content="Private on-device document scanner — flatten, enhance, OCR, multi-page PDF. No account required." />
   <title>ScanMagic</title>
+  <link rel="manifest" href="manifest.webmanifest" />
   <style>
     :root {
       --bg: #0f0f12;
@@ -756,8 +760,9 @@
             <button class="chip-btn" data-quality="0.5">Small</button>
           </div>
           <div class="row">
-            <button class="btn" id="btnExportJpg" style="flex:1;max-width:140px;padding:12px">📷 JPEG</button>
-            <button class="btn btn-secondary" id="btnExportPdf" style="flex:1;max-width:140px;padding:12px">📑 PDF</button>
+            <button class="btn" id="btnExportJpg" style="flex:1;max-width:120px;padding:12px">📷 JPEG</button>
+            <button class="btn btn-secondary" id="btnExportPdf" style="flex:1;max-width:120px;padding:12px">📑 PDF</button>
+            <button class="btn btn-secondary" id="btnShare" style="flex:1;max-width:120px;padding:12px">📤 Share</button>
           </div>
         </div>
         <div class="tool-row" id="toolRow">
@@ -1054,7 +1059,8 @@
           r = g = b = gray;
         } else if (filter === "bw") {
           const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-          const v = gray > 140 ? 255 : 0;
+          // Dual threshold for cleaner document B&W
+          const v = gray > 148 ? 255 : 0;
           r = g = b = v;
         } else if (filter === "enhance" || filter === "contrast") {
           const factor = filter === "contrast" ? 1.45 : 1.25;
@@ -2659,7 +2665,6 @@
 
     function exportJpeg() {
       if (!canvas.width) return;
-      // if multipage, export all as separate files is awkward — export current
       canvas.toBlob((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -2667,8 +2672,39 @@
         a.download = `scan-${state.scanMode}-${Date.now()}.jpg`;
         a.click();
         URL.revokeObjectURL(url);
+        if (navigator.vibrate) navigator.vibrate(20);
         toast("JPEG saved");
       }, "image/jpeg", state.exportQuality);
+    }
+
+    async function shareScan() {
+      if (!canvas.width) return;
+      try {
+        const blob = await new Promise((res) =>
+          canvas.toBlob(res, "image/jpeg", state.exportQuality)
+        );
+        const file = new File([blob], `scan-${state.scanMode}-${Date.now()}.jpg`, {
+          type: "image/jpeg"
+        });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: "ScanMagic",
+            text: "Scanned with ScanMagic"
+          });
+          toast("Shared");
+        } else if (navigator.share) {
+          const dataUrl = canvas.toDataURL("image/jpeg", state.exportQuality);
+          await navigator.share({ title: "ScanMagic", text: dataUrl });
+        } else {
+          exportJpeg();
+          toast("Share not supported — downloaded instead");
+        }
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        console.error(err);
+        exportJpeg();
+      }
     }
 
     async function exportPdf() {
@@ -2734,6 +2770,7 @@
 
     $("btnExportJpg").addEventListener("click", exportJpeg);
     $("btnExportPdf").addEventListener("click", exportPdf);
+    $("btnShare").addEventListener("click", shareScan);
 
     // Apply mode presets when opening editor
     function applyModePreset() {
@@ -2854,9 +2891,27 @@
               setTimeout(() => {
                 try {
                   magicDeblurCore();
+                  // Auto-crop if document bounds are clear
+                  $("loadingMsg").textContent = "Detecting edges…";
+                  const bounds = detectDocumentBounds();
+                  if (bounds && bounds.w > 40 && bounds.h > 40) {
+                    const { x, y, w, h } = bounds;
+                    const sx = Math.max(0, Math.floor(x));
+                    const sy = Math.max(0, Math.floor(y));
+                    const sw = Math.min(state.baseImageData.width - sx, Math.floor(w));
+                    const sh = Math.min(state.baseImageData.height - sy, Math.floor(h));
+                    if (sw > 50 && sh > 50 && (sw < state.baseImageData.width * 0.98 || sh < state.baseImageData.height * 0.98)) {
+                      const baseOff = document.createElement("canvas");
+                      baseOff.width = sw;
+                      baseOff.height = sh;
+                      baseOff.getContext("2d").putImageData(state.baseImageData, -sx, -sy);
+                      state.baseImageData = baseOff.getContext("2d").getImageData(0, 0, sw, sh);
+                    }
+                  }
                   invalidatePaperCache();
                   applyFilterAndDraw();
-                  toast("Magic Enhance complete");
+                  if (navigator.vibrate) navigator.vibrate(30);
+                  toast("Scan ready — export or add another page");
                 } catch (e) {
                   console.error(e);
                   toast("Enhance partially failed");
@@ -3077,9 +3132,19 @@
       if (!state.filter) setFilter("original");
       else setFilter(state.filter);
       refreshPagesBar();
-      // Auto Magic for document-like modes (feels like a real scanner)
+      // Show mode in header
+      const titles = {
+        document: "Document",
+        receipt: "Receipt",
+        card: "Business Card",
+        whiteboard: "Whiteboard",
+        photo: "Photo"
+      };
+      const h1 = document.querySelector("#editor .header h1");
+      if (h1) h1.textContent = titles[state.scanMode] || "Edit";
+      // Auto Magic for document-like modes (real scanner feel)
       if (opts && opts.autoMagic !== false && state.scanMode !== "photo") {
-        setTimeout(() => runMagicEnhance(), 200);
+        setTimeout(() => runMagicEnhance(), 250);
       }
     }
 
