@@ -726,7 +726,7 @@
         <button class="btn btn-secondary" id="btnPickFile">🖼️ From Gallery</button>
       </div>
       <div id="pagesPreview" class="pages-preview" style="display:none;"></div>
-      <input type="file" id="fileInput" accept="image/*" capture="environment" hidden />
+      <input type="file" id="fileInput" accept="image/*" hidden />
     </div>
 
     <!-- CAMERA -->
@@ -948,7 +948,9 @@
       isAnnotating: false,
       eraseMode: "paper",       // paper | surround | color | eyedrop
       eraseColor: { r: 245, g: 245, b: 242 },
-      eyedropMode: false
+      eyedropMode: false,
+      torchSupported: false,
+      torchOn: false
     };
 
     // ========== DOM ==========
@@ -1001,11 +1003,47 @@
         state.stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = state.stream;
         showScreen("camera");
+        setupTorch();
       } catch (err) {
         console.error(err);
         toast("Camera access denied or unavailable");
         // fallback to file picker
         $("fileInput").click();
+      }
+    }
+
+    function setupTorch() {
+      state.torchOn = false;
+      state.torchSupported = false;
+      const btn = $("btnFlash");
+      btn.classList.remove("active");
+      const track = state.stream && state.stream.getVideoTracks()[0];
+      if (!track) { btn.style.opacity = "0.4"; return; }
+      let caps = {};
+      try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) { caps = {}; }
+      state.torchSupported = !!caps.torch;
+      // Torch is only ever available on the rear camera, and only on browsers
+      // that expose it (mainly Chrome/Edge on Android). Reflect that honestly
+      // instead of pretending it always works.
+      btn.style.opacity = state.torchSupported ? "1" : "0.4";
+    }
+
+    async function toggleTorch() {
+      const track = state.stream && state.stream.getVideoTracks()[0];
+      if (!track || !state.torchSupported) {
+        toast(state.facingMode === "user"
+          ? "Flash isn't available on the front camera"
+          : "Your browser doesn't expose flash control — try From Gallery to use your phone's own camera app, which does support flash");
+        return;
+      }
+      try {
+        const next = !state.torchOn;
+        await track.applyConstraints({ advanced: [{ torch: next }] });
+        state.torchOn = next;
+        $("btnFlash").classList.toggle("active", next);
+      } catch (err) {
+        console.error(err);
+        toast("Couldn't toggle flash on this device");
       }
     }
 
@@ -1015,6 +1053,9 @@
         state.stream = null;
       }
       video.srcObject = null;
+      state.torchOn = false;
+      state.torchSupported = false;
+      $("btnFlash").classList.remove("active");
     }
 
     function switchCamera() {
@@ -2114,6 +2155,28 @@
       ];
     }
 
+    function rgbToYCbCr(data, w, h) {
+      const n = w * h;
+      const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        Y[p] = 0.299 * r + 0.587 * g + 0.114 * b;
+        Cb[p] = -0.168736 * r - 0.331264 * g + 0.5 * b + 128;
+        Cr[p] = 0.5 * r - 0.418688 * g - 0.081312 * b + 128;
+      }
+      return { Y, Cb, Cr };
+    }
+
+    function ycbcrToRGBA(Y, Cb, Cr, n, out) {
+      for (let p = 0, i = 0; p < n; p++, i += 4) {
+        const y = Y[p], cb = Cb[p] - 128, cr = Cr[p] - 128;
+        out[i] = clamp(y + 1.402 * cr);
+        out[i + 1] = clamp(y - 0.344136 * cb - 0.714136 * cr);
+        out[i + 2] = clamp(y + 1.772 * cb);
+        out[i + 3] = 255;
+      }
+    }
+
     function runDeblur() {
       if (!state.baseImageData) {
         toast("No image loaded");
@@ -2126,60 +2189,81 @@
         try {
           const src = state.baseImageData;
           const { width: w, height: h, data } = src;
+          const n = w * h;
 
-          // Multi-scale unsharp: fine (r=1) + medium (r=2)
-          const blur1 = blurRGB(data, w, h, 1);
-          const blur2 = blurRGB(data, w, h, 2);
-          const out = new ImageData(w, h);
-          const d = out.data;
+          // Work in luminance only. Sharpening R/G/B independently (the old
+          // approach) creates color fringes around every stroke edge, which
+          // reads as *more* blur, not less. Keeping Cb/Cr untouched avoids that.
+          const { Y, Cb, Cr } = rgbToYCbCr(data, w, h);
 
-          for (let p = 0; p < w * h; p++) {
-            const i = p * 4;
-            const or_ = data[i], og = data[i + 1], ob = data[i + 2];
-            const lum = 0.299 * or_ + 0.587 * og + 0.114 * ob;
+          // Three-scale unsharp: fine strokes, medium letterforms, and a wide
+          // "local contrast" pass that pulls faint/blurry ink darker relative
+          // to its surrounding paper — this is what most single-radius unsharp
+          // masks miss and why mild blur used to survive Deblur.
+          const blurFine = boxBlurChannel(Y, w, h, 1);
+          const blurMed = boxBlurChannel(Y, w, h, 3);
+          const blurWide = boxBlurChannel(Y, w, h, 9);
 
-            // Stronger on text-ish tones, mild on paper to avoid grain
-            let a1 = 1.8, a2 = 0.9;
-            if (lum > 220) { a1 = 0.4; a2 = 0.2; }
-            else if (lum > 180) { a1 = 1.0; a2 = 0.5; }
-            else if (lum < 30) { a1 = 1.2; a2 = 0.6; }
-            else { a1 = 2.1; a2 = 1.1; } // body text
+          const Ysharp = new Float32Array(n);
+          for (let p = 0; p < n; p++) {
+            const y = Y[p];
+            const hpFine = y - blurFine[p];
+            const hpMed = y - blurMed[p];
+            const hpWide = y - blurWide[p];
+            const edge = Math.abs(hpFine);
 
-            let r = or_ + a1 * (or_ - blur1[0][p]) + a2 * (or_ - blur2[0][p]);
-            let g = og + a1 * (og - blur1[1][p]) + a2 * (og - blur2[1][p]);
-            let b = ob + a1 * (ob - blur1[2][p]) + a2 * (ob - blur2[2][p]);
-
-            d[i] = clamp(r);
-            d[i + 1] = clamp(g);
-            d[i + 2] = clamp(b);
-            d[i + 3] = 255;
+            // Edge-adaptive gain: hit real strokes hard, keep flat paper calm
+            // so grain/noise doesn't get amplified into speckle.
+            const fineGain = 1.7 + Math.min(edge, 35) / 35 * 1.6; // 1.7 .. 3.3
+            Ysharp[p] = y + fineGain * hpFine + 0.75 * hpMed + 0.4 * hpWide;
           }
 
-          // Laplacian-style edge boost on mid-tones (text strokes)
-          const snap = new Uint8ClampedArray(d);
-          for (let y = 1; y < h - 1; y++) {
-            for (let x = 1; x < w - 1; x++) {
-              const i = (y * w + x) * 4;
-              const lum = 0.299 * snap[i] + 0.587 * snap[i + 1] + 0.114 * snap[i + 2];
-              if (lum > 210 || lum < 20) continue;
-              // center - average of 4-neighbors
-              for (let c = 0; c < 3; c++) {
-                const center = snap[i + c];
-                const avg = (
-                  snap[((y - 1) * w + x) * 4 + c] +
-                  snap[((y + 1) * w + x) * 4 + c] +
-                  snap[(y * w + (x - 1)) * 4 + c] +
-                  snap[(y * w + (x + 1)) * 4 + c]
-                ) / 4;
-                const edge = center - avg;
-                d[i + c] = clamp(center + edge * 1.25);
+          // True 3x3 Laplacian pass for extra stroke-edge crispness, gated by
+          // the *original* local contrast so sensor noise on blank paper isn't
+          // turned into fake texture.
+          const Yfinal = new Float32Array(n);
+          for (let y2 = 0; y2 < h; y2++) {
+            for (let x2 = 0; x2 < w; x2++) {
+              const p = y2 * w + x2;
+              if (x2 === 0 || y2 === 0 || x2 === w - 1 || y2 === h - 1) {
+                Yfinal[p] = Ysharp[p];
+                continue;
               }
+              const c = Ysharp[p];
+              const lap = 4 * c - Ysharp[p - 1] - Ysharp[p + 1] - Ysharp[p - w] - Ysharp[p + w];
+              const localEdge = Math.abs(
+                Y[p] - (Y[p - 1] + Y[p + 1] + Y[p - w] + Y[p + w]) / 4
+              );
+              const k = localEdge > 3 ? 0.35 : 0.08;
+              Yfinal[p] = c + lap * k;
             }
           }
 
+          // Percentile contrast stretch (clip 0.5% outliers) so pale, blurry
+          // ink reads noticeably darker while paper stays clean white —
+          // blended at 60% so photos of non-text subjects don't get crushed.
+          const hist = new Uint32Array(256);
+          for (let p = 0; p < n; p++) {
+            hist[Math.max(0, Math.min(255, Math.round(Yfinal[p])))]++;
+          }
+          const clip = n * 0.005;
+          let cum = 0, loB = 0, hiB = 255;
+          for (let b = 0; b < 256; b++) { cum += hist[b]; if (cum > clip) { loB = b; break; } }
+          cum = 0;
+          for (let b = 255; b >= 0; b--) { cum += hist[b]; if (cum > clip) { hiB = b; break; } }
+          if (hiB <= loB) hiB = loB + 1;
+          const scale = 255 / (hiB - loB);
+          for (let p = 0; p < n; p++) {
+            const stretched = (Yfinal[p] - loB) * scale;
+            Yfinal[p] = Yfinal[p] * 0.4 + stretched * 0.6;
+          }
+
+          const out = new ImageData(w, h);
+          ycbcrToRGBA(Yfinal, Cb, Cr, n, out.data);
+
           state.baseImageData = out;
           applyFilterAndDraw();
-          toast("Deblur applied – text edges boosted");
+          toast("Deblur applied – sharper strokes, cleaner edges");
         } catch (err) {
           console.error(err);
           toast("Deblur failed");
@@ -2659,7 +2743,7 @@
     $("btnSwitchCam").addEventListener("click", switchCamera);
     $("btnCapture").addEventListener("click", capturePhoto);
     $("btnGalleryFromCam").addEventListener("click", () => $("fileInput").click());
-    $("btnFlash").addEventListener("click", () => toast("Flash not available in browser"));
+    $("btnFlash").addEventListener("click", toggleTorch);
 
     // Editor
     $("btnBackEditor").addEventListener("click", () => {
