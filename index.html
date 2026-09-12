@@ -726,25 +726,12 @@
         <button class="btn btn-secondary" id="btnPickFile">🖼️ From Gallery</button>
       </div>
       <div id="pagesPreview" class="pages-preview" style="display:none;"></div>
+      <!-- capture="environment" hints mobile browsers to open the phone's own
+           camera app, so flash, zoom and HDR all work exactly like they do
+           when you take a normal photo. -->
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden />
+      <!-- No capture attribute here — this one opens the real photo library. -->
       <input type="file" id="fileInput" accept="image/*" hidden />
-    </div>
-
-    <!-- CAMERA -->
-    <div id="camera" class="screen">
-      <div class="header">
-        <button class="btn-icon" id="btnCloseCamera" title="Close">✕</button>
-        <h1>Capture</h1>
-        <button class="btn-icon" id="btnSwitchCam" title="Switch camera">🔄</button>
-      </div>
-      <div class="viewport">
-        <video id="video" playsinline autoplay muted></video>
-        <div class="camera-overlay"></div>
-      </div>
-      <div class="camera-controls">
-        <button class="btn-icon" id="btnFlash" title="Flash">⚡</button>
-        <button class="shutter" id="btnCapture" title="Capture"></button>
-        <button class="btn-icon" id="btnGalleryFromCam" title="Gallery">🖼️</button>
-      </div>
     </div>
 
     <!-- EDITOR -->
@@ -916,8 +903,6 @@
   <script>
     // ========== State ==========
     const state = {
-      stream: null,
-      facingMode: "environment",
       originalImage: null,
       currentImageData: null,
       baseImageData: null,
@@ -948,19 +933,15 @@
       isAnnotating: false,
       eraseMode: "paper",       // paper | surround | color | eyedrop
       eraseColor: { r: 245, g: 245, b: 242 },
-      eyedropMode: false,
-      torchSupported: false,
-      torchOn: false
+      eyedropMode: false
     };
 
     // ========== DOM ==========
     const $ = (id) => document.getElementById(id);
     const screens = {
       home: $("home"),
-      camera: $("camera"),
       editor: $("editor")
     };
-    const video = $("video");
     const canvas = $("editCanvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     const canvasWrap = $("canvasWrap");
@@ -986,100 +967,6 @@
 
     function showLoading(v) {
       loadingEl.classList.toggle("visible", v);
-    }
-
-    // ========== Camera ==========
-    async function startCamera() {
-      stopCamera();
-      try {
-        const constraints = {
-          video: {
-            facingMode: state.facingMode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        };
-        state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = state.stream;
-        showScreen("camera");
-        setupTorch();
-      } catch (err) {
-        console.error(err);
-        toast("Camera access denied or unavailable");
-        // fallback to file picker
-        $("fileInput").click();
-      }
-    }
-
-    function setupTorch() {
-      state.torchOn = false;
-      state.torchSupported = false;
-      const btn = $("btnFlash");
-      btn.classList.remove("active");
-      const track = state.stream && state.stream.getVideoTracks()[0];
-      if (!track) { btn.style.opacity = "0.4"; return; }
-      let caps = {};
-      try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) { caps = {}; }
-      state.torchSupported = !!caps.torch;
-      // Torch is only ever available on the rear camera, and only on browsers
-      // that expose it (mainly Chrome/Edge on Android). Reflect that honestly
-      // instead of pretending it always works.
-      btn.style.opacity = state.torchSupported ? "1" : "0.4";
-    }
-
-    async function toggleTorch() {
-      const track = state.stream && state.stream.getVideoTracks()[0];
-      if (!track || !state.torchSupported) {
-        toast(state.facingMode === "user"
-          ? "Flash isn't available on the front camera"
-          : "Your browser doesn't expose flash control — try From Gallery to use your phone's own camera app, which does support flash");
-        return;
-      }
-      try {
-        const next = !state.torchOn;
-        await track.applyConstraints({ advanced: [{ torch: next }] });
-        state.torchOn = next;
-        $("btnFlash").classList.toggle("active", next);
-      } catch (err) {
-        console.error(err);
-        toast("Couldn't toggle flash on this device");
-      }
-    }
-
-    function stopCamera() {
-      if (state.stream) {
-        state.stream.getTracks().forEach(t => t.stop());
-        state.stream = null;
-      }
-      video.srcObject = null;
-      state.torchOn = false;
-      state.torchSupported = false;
-      $("btnFlash").classList.remove("active");
-    }
-
-    function switchCamera() {
-      state.facingMode = state.facingMode === "environment" ? "user" : "environment";
-      startCamera();
-    }
-
-    function capturePhoto() {
-      if (!video.videoWidth) return;
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      const off = document.createElement("canvas");
-      off.width = w;
-      off.height = h;
-      const octx = off.getContext("2d");
-      octx.drawImage(video, 0, 0);
-      off.toBlob((blob) => {
-        const url = URL.createObjectURL(blob);
-        loadImageFromUrl(url).then(() => {
-          URL.revokeObjectURL(url);
-          stopCamera();
-          openEditor({ autoMagic: true });
-        });
-      }, "image/jpeg", 0.92);
     }
 
     // ========== Image loading ==========
@@ -2727,23 +2614,18 @@
 
     // ========== Events ==========
     // Home
-    $("btnStartCamera").addEventListener("click", startCamera);
+    $("btnStartCamera").addEventListener("click", () => $("cameraInput").click());
+    $("cameraInput").addEventListener("change", (e) => {
+      const f = e.target.files[0];
+      if (f) loadImageFromFile(f);
+      e.target.value = "";
+    });
     $("btnPickFile").addEventListener("click", () => $("fileInput").click());
     $("fileInput").addEventListener("change", (e) => {
       const f = e.target.files[0];
       if (f) loadImageFromFile(f);
       e.target.value = "";
     });
-
-    // Camera
-    $("btnCloseCamera").addEventListener("click", () => {
-      stopCamera();
-      showScreen("home");
-    });
-    $("btnSwitchCam").addEventListener("click", switchCamera);
-    $("btnCapture").addEventListener("click", capturePhoto);
-    $("btnGalleryFromCam").addEventListener("click", () => $("fileInput").click());
-    $("btnFlash").addEventListener("click", toggleTorch);
 
     // Editor
     $("btnBackEditor").addEventListener("click", () => {
