@@ -128,6 +128,9 @@
       background: var(--accent);
       color: white;
     }
+    .btn-icon:disabled {
+      opacity: 0.35;
+    }
     .btn:disabled {
       opacity: 0.45;
       pointer-events: none;
@@ -264,6 +267,34 @@
       object-fit: contain;
       box-shadow: 0 4px 24px rgba(0,0,0,0.5);
       cursor: crosshair;
+      will-change: transform;
+    }
+    #zoomControls {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(20,20,24,0.72);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      padding: 4px;
+      z-index: 5;
+    }
+    #zoomControls .btn-icon {
+      width: 34px;
+      height: 34px;
+      font-size: 1.1rem;
+      background: rgba(255,255,255,0.08);
+    }
+    #zoomLabel {
+      font-size: 0.75rem;
+      color: var(--muted, #aaa);
+      min-width: 38px;
+      text-align: center;
+      user-select: none;
     }
     .toolbar {
       display: flex;
@@ -765,6 +796,11 @@
         </div>
         <div id="flattenHint">Tap 4 corners to straighten</div>
         <div id="cropLoupe"><canvas id="loupeCanvas" width="96" height="96"></canvas><div class="cross"></div></div>
+        <div id="zoomControls">
+          <button class="btn-icon" id="btnZoomOut" title="Zoom out">−</button>
+          <span id="zoomLabel">100%</span>
+          <button class="btn-icon" id="btnZoomIn" title="Zoom in">+</button>
+        </div>
       </div>
       <div class="toolbar">
         <div class="eraser-panel" id="eraserPanel">
@@ -1112,6 +1148,52 @@
     function fitCanvasToView() {
       canvas.style.width = "";
       canvas.style.height = "";
+      resetZoom();
+    }
+
+    // ========== Zoom / Pan ==========
+    const MIN_ZOOM = 1;
+    const MAX_ZOOM = 6;
+
+    function applyCanvasTransform() {
+      canvas.style.transformOrigin = "center center";
+      canvas.style.transform = `translate(${state.offsetX}px, ${state.offsetY}px) scale(${state.scale})`;
+    }
+
+    function resetZoom() {
+      state.scale = 1;
+      state.offsetX = 0;
+      state.offsetY = 0;
+      applyCanvasTransform();
+      updateZoomLabel();
+    }
+
+    function updateZoomLabel() {
+      const label = $("zoomLabel");
+      if (label) label.textContent = Math.round(state.scale * 100) + "%";
+      const outBtn = $("btnZoomOut");
+      if (outBtn) outBtn.disabled = state.scale <= MIN_ZOOM + 0.001;
+    }
+
+    /** Zoom so the content point currently under screen point (ax, ay) stays put. */
+    function zoomAt(ax, ay, newScale) {
+      newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+      if (newScale === state.scale) return;
+      const rect = canvas.getBoundingClientRect();
+      const crx = rect.left + rect.width / 2;
+      const cry = rect.top + rect.height / 2;
+      const k = newScale / state.scale;
+      state.offsetX = state.offsetX + (1 - k) * (ax - crx);
+      state.offsetY = state.offsetY + (1 - k) * (ay - cry);
+      state.scale = newScale;
+      applyCanvasTransform();
+      updateZoomLabel();
+    }
+
+    function stepZoom(factor) {
+      if (!state.baseImageData) return;
+      const rect = canvas.getBoundingClientRect();
+      zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, state.scale * factor);
     }
 
     // ========== Undo ==========
@@ -1182,6 +1264,13 @@
         if (tool === "magic") { runMagicEnhance(); return; }
         if (tool === "ocr") { runOCR(); return; }
         // rotate falls through to handler below after UI reset
+      }
+
+      // Crop and flatten position their overlays (corner dots, crop box) using
+      // real canvas pixel math — force the view back to 1:1 first so those
+      // overlays land exactly where they should.
+      if ((tool === "crop" || tool === "flatten") && state.scale !== 1) {
+        resetZoom();
       }
 
       // clear flatten UI when leaving
@@ -2692,8 +2781,28 @@
     }
 
     // Pointer events on canvas
+    const activePointers = new Map(); // pointerId -> {x, y} in client coords
+    let pinchStartDist = 0, pinchStartScale = 1, pinchMid = { x: 0, y: 0 };
+    let panLast = null;
+
     function onPointerDown(e) {
       e.preventDefault();
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size >= 2 && state.tool !== "crop" && state.tool !== "flatten") {
+        // Second finger down — switch to pinch-zoom, abandoning any
+        // single-finger draw/erase/pan that may have just started.
+        state.isDrawing = false;
+        state.isPanning = false;
+        panLast = null;
+        const pts = Array.from(activePointers.values()).slice(0, 2);
+        pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        pinchStartScale = state.scale;
+        pinchMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        return;
+      }
+      if (activePointers.size > 1) return; // ignore extra touches beyond the pinch pair
+
       const pos = getCanvasPos(e);
       if (state.eyedropMode || state.eraseMode === "eyedrop") {
         pickColorAt(pos.x, pos.y);
@@ -2719,12 +2828,41 @@
         // Corners are pre-placed — only drag the blue dots (ignore canvas taps)
         return;
       } else {
+        // Default "move" tool: single-finger drag pans when zoomed in.
         state.isPanning = true;
+        panLast = { x: e.clientX, y: e.clientY };
       }
     }
 
     function onPointerMove(e) {
       e.preventDefault();
+      if (activePointers.has(e.pointerId)) {
+        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+
+      if (activePointers.size >= 2 && state.tool !== "crop" && state.tool !== "flatten") {
+        const pts = Array.from(activePointers.values()).slice(0, 2);
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        const newScale = pinchStartScale * (dist / pinchStartDist);
+        // Anchor the zoom at the gesture's last midpoint, then follow the
+        // midpoint's own movement — gives combined pinch-zoom + two-finger pan.
+        zoomAt(pinchMid.x, pinchMid.y, newScale);
+        state.offsetX += (mid.x - pinchMid.x);
+        state.offsetY += (mid.y - pinchMid.y);
+        pinchMid = mid;
+        applyCanvasTransform();
+        return;
+      }
+
+      if (state.isPanning && state.tool === "move" && panLast) {
+        state.offsetX += (e.clientX - panLast.x);
+        state.offsetY += (e.clientY - panLast.y);
+        panLast = { x: e.clientX, y: e.clientY };
+        applyCanvasTransform();
+        return;
+      }
+
       const pos = getCanvasPos(e);
 
       if (state.dragCornerIndex >= 0 && state.tool === "flatten") {
@@ -2753,10 +2891,19 @@
     }
 
     function onPointerUp(e) {
+      activePointers.delete(e.pointerId);
       state.isDrawing = false;
       state.cropStart = null;
-      state.isPanning = false;
       state.dragCornerIndex = -1;
+      if (activePointers.size === 1 && state.tool === "move") {
+        // One finger still down after a pinch ends — resume it as a pan.
+        const remaining = Array.from(activePointers.values())[0];
+        state.isPanning = true;
+        panLast = remaining;
+      } else {
+        state.isPanning = false;
+        panLast = null;
+      }
     }
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -2764,6 +2911,26 @@
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointerleave", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
+
+    // Mouse wheel / trackpad zoom (desktop)
+    canvasWrap.addEventListener("wheel", (e) => {
+      if (!state.baseImageData || state.tool === "crop" || state.tool === "flatten") return;
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      zoomAt(e.clientX, e.clientY, state.scale * factor);
+    }, { passive: false });
+
+    // Double-click / double-tap to toggle between fit and a closer zoom
+    canvas.addEventListener("dblclick", (e) => {
+      if (!state.baseImageData || state.tool === "crop" || state.tool === "flatten") return;
+      e.preventDefault();
+      const target = state.scale > 1.5 ? 1 : 2.5;
+      zoomAt(e.clientX, e.clientY, target);
+    });
+
+    $("btnZoomIn").addEventListener("click", () => stepZoom(1.4));
+    $("btnZoomOut").addEventListener("click", () => stepZoom(1 / 1.4));
+
 
     // Global move/up so corner dragging works after dots are recreated
     window.addEventListener("pointermove", (e) => {
@@ -3689,10 +3856,8 @@
       };
       const h1 = document.querySelector("#editor .header h1");
       if (h1) h1.textContent = titles[state.scanMode] || "Edit";
-      // Auto Magic for document-like modes (real scanner feel)
-      if (opts && opts.autoMagic !== false && state.scanMode !== "photo") {
-        setTimeout(() => runMagicEnhance(), 250);
-      }
+      // Magic Enhance no longer runs automatically — tap the Magic tool
+      // yourself when you want it applied.
     }
 
     // Prevent pull-to-refresh / accidental zoom on iOS
