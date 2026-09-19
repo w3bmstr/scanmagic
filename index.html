@@ -3141,6 +3141,11 @@
 
     $("btnAddPage").addEventListener("click", () => {
       addCurrentAsPage();
+      // Saving the current page isn't enough on its own — without this,
+      // the editor keeps showing the same image on canvas, so the *next*
+      // tap of "Add Page" would just re-save that same image again.
+      // Re-open capture so the user scans a genuinely new physical page.
+      $("cameraInput").click();
     });
 
     // ========== OCR ==========
@@ -3250,16 +3255,26 @@
       const { jsPDF } = api;
 
       let pages = state.pages.slice();
-      if (!pages.length) {
-        if (!canvas.width) {
-          toast("Nothing to export");
-          return;
+      // Always fold in whatever's currently on the canvas as the final
+      // page, so you never have to remember an extra "＋ Page" tap just
+      // to commit the last scan before exporting. If it's the exact same
+      // image as the last page you already added (e.g. you tapped
+      // "＋ Page" and then cancelled the camera), skip it to avoid a
+      // duplicate.
+      if (canvas.width) {
+        const currentDataUrl = getCurrentDataUrl(0.92);
+        const lastPage = pages[pages.length - 1];
+        if (!lastPage || lastPage.dataUrl !== currentDataUrl) {
+          pages.push({
+            dataUrl: currentDataUrl,
+            width: canvas.width,
+            height: canvas.height
+          });
         }
-        pages = [{
-          dataUrl: getCurrentDataUrl(state.exportQuality),
-          width: canvas.width,
-          height: canvas.height
-        }];
+      }
+      if (!pages.length) {
+        toast("Nothing to export");
+        return;
       }
 
       showLoading(true);
