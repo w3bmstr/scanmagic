@@ -727,15 +727,70 @@
 
     #pagesBar {
       display: none;
-      padding: 6px 8px;
-      gap: 6px;
+      padding: 8px 10px;
+      gap: 8px;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
       background: var(--bg);
       border-top: 1px solid #2a2a32;
-      justify-content: center;
-      align-items: center;
+      justify-content: flex-start;
+      align-items: flex-end;
+      scrollbar-width: none;
     }
+    #pagesBar::-webkit-scrollbar { display: none; }
     #pagesBar.visible { display: flex; }
+    .page-thumb-wrap {
+      position: relative;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.7rem;
+      padding: 0;
+    }
+    .page-thumb-wrap img.page-thumb {
+      width: 52px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 2px solid var(--surface2);
+      background: #222;
+      display: block;
+    }
+    .page-thumb-wrap.active img.page-thumb {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(59,130,246,0.4);
+    }
+    .page-thumb-wrap.active { color: var(--accent); font-weight: 700; }
+    .page-thumb-wrap .page-del {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--danger);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1;
+      border: 2px solid var(--bg);
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #pagesBar .page-count-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      padding: 0 6px;
+      align-self: center;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -963,6 +1018,7 @@
       dragCornerIndex: -1,
       scanMode: "document",
       pages: [],            // { dataUrl, width, height }[]
+      currentPageIndex: null, // page shown in editor, or null if new
       penColor: "#ef4444",
       penSize: 4,
       exportQuality: 0.92,
@@ -1055,6 +1111,8 @@
         toast("Please select an image");
         return;
       }
+      // Camera / gallery capture starts a new uncommitted page
+      state.currentPageIndex = null;
       const url = URL.createObjectURL(file);
       loadImageFromUrl(url).then(() => {
         URL.revokeObjectURL(url);
@@ -3102,26 +3160,79 @@
       toast("Contrast applied");
     });
 
-    // ========== Multi-page ==========
+        // ========== Multi-page ==========
     function getCurrentDataUrl(quality) {
+      if (!canvas.width) return null;
       return canvas.toDataURL("image/jpeg", quality || state.exportQuality);
     }
 
-    function addCurrentAsPage() {
-      if (!canvas.width) return;
+    function commitCurrentPage() {
+      if (!canvas.width) return null;
       const dataUrl = getCurrentDataUrl(0.92);
-      state.pages.push({
-        dataUrl,
-        width: canvas.width,
-        height: canvas.height
-      });
+      if (!dataUrl) return null;
+      const entry = { dataUrl, width: canvas.width, height: canvas.height };
+      if (state.currentPageIndex != null && state.currentPageIndex >= 0 && state.currentPageIndex < state.pages.length) {
+        state.pages[state.currentPageIndex] = entry;
+        return state.currentPageIndex;
+      }
+      state.pages.push(entry);
+      state.currentPageIndex = state.pages.length - 1;
+      return state.currentPageIndex;
+    }
+
+    function loadPageIntoEditor(index) {
+      if (index < 0 || index >= state.pages.length) return;
+      const page = state.pages[index];
+      if (!page || !page.dataUrl) return;
+      showLoading(true);
+      $("loadingMsg").textContent = "Loading page…";
+      const img = new Image();
+      img.onload = () => {
+        state.originalImage = img;
+        state.rotation = 0;
+        state.history = [];
+        state.currentPageIndex = index;
+        prepareBaseImage();
+        applyFilterAndDraw();
+        updateUndoBtn();
+        refreshPagesBar();
+        showLoading(false);
+        toast("Page " + (index + 1) + " of " + state.pages.length);
+      };
+      img.onerror = () => { showLoading(false); toast("Could not load page"); };
+      img.src = page.dataUrl;
+    }
+
+    function deletePageAt(index) {
+      if (index < 0 || index >= state.pages.length) return;
+      state.pages.splice(index, 1);
+      if (state.currentPageIndex === index) state.currentPageIndex = null;
+      else if (state.currentPageIndex != null && state.currentPageIndex > index) state.currentPageIndex -= 1;
       refreshPagesBar();
-      toast(`Page ${state.pages.length} added`);
+      toast(state.pages.length ? ("Page removed · " + state.pages.length + " left") : "All pages removed");
+      if (state.pages.length && state.currentPageIndex == null) {
+        loadPageIntoEditor(Math.min(index, state.pages.length - 1));
+      }
+    }
+
+    function switchToPage(index) {
+      if (index === state.currentPageIndex) return;
+      if (canvas.width) {
+        const cur = getCurrentDataUrl(0.92);
+        if (state.currentPageIndex != null && state.pages[state.currentPageIndex]) {
+          if (state.pages[state.currentPageIndex].dataUrl !== cur) commitCurrentPage();
+        } else if (cur) {
+          const last = state.pages[state.pages.length - 1];
+          if (!last || last.dataUrl !== cur) commitCurrentPage();
+        }
+      }
+      loadPageIntoEditor(index);
     }
 
     function refreshPagesBar() {
       const bar = $("pagesBar");
       const homePrev = $("pagesPreview");
+      if (!bar || !homePrev) return;
       if (!state.pages.length) {
         bar.classList.remove("visible");
         bar.innerHTML = "";
@@ -3130,25 +3241,83 @@
         return;
       }
       bar.classList.add("visible");
-      bar.innerHTML = state.pages.map((p, i) =>
-        `<img class="page-thumb" src="${p.dataUrl}" data-i="${i}" title="Page ${i + 1}" />`
-      ).join("") + `<span style="font-size:0.75rem;color:var(--muted);padding:0 6px">${state.pages.length} page${state.pages.length > 1 ? "s" : ""}</span>`;
+      bar.innerHTML = "";
+      state.pages.forEach((p, i) => {
+        const wrap = document.createElement("button");
+        wrap.type = "button";
+        wrap.className = "page-thumb-wrap" + (i === state.currentPageIndex ? " active" : "");
+        wrap.title = "Page " + (i + 1);
+        wrap.setAttribute("aria-label", "Go to page " + (i + 1));
+        const img = document.createElement("img");
+        img.className = "page-thumb";
+        img.src = p.dataUrl;
+        img.alt = "Page " + (i + 1);
+        const lbl = document.createElement("span");
+        lbl.textContent = String(i + 1);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "page-del";
+        del.title = "Remove page";
+        del.textContent = "×";
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm("Remove page " + (i + 1) + "?")) deletePageAt(i);
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(lbl);
+        wrap.appendChild(del);
+        wrap.addEventListener("click", () => switchToPage(i));
+        bar.appendChild(wrap);
+      });
+      const count = document.createElement("span");
+      count.className = "page-count-label";
+      count.textContent = state.pages.length + " page" + (state.pages.length > 1 ? "s" : "");
+      bar.appendChild(count);
+      const active = bar.querySelector(".page-thumb-wrap.active");
+      if (active) {
+        try { active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch (_) {}
+      }
+
       homePrev.style.display = "flex";
-      homePrev.innerHTML = state.pages.map((p, i) =>
-        `<img class="page-thumb" src="${p.dataUrl}" title="Page ${i + 1}" />`
-      ).join("");
+      homePrev.innerHTML = "";
+      state.pages.forEach((p, i) => {
+        const wrap = document.createElement("button");
+        wrap.type = "button";
+        wrap.className = "page-thumb-wrap" + (i === state.currentPageIndex ? " active" : "");
+        const img = document.createElement("img");
+        img.className = "page-thumb";
+        img.src = p.dataUrl;
+        img.alt = "Page " + (i + 1);
+        wrap.appendChild(img);
+        wrap.addEventListener("click", () => {
+          showScreen("editor");
+          switchToPage(i);
+        });
+        homePrev.appendChild(wrap);
+      });
     }
 
     $("btnAddPage").addEventListener("click", () => {
-      addCurrentAsPage();
-      // Saving the current page isn't enough on its own — without this,
-      // the editor keeps showing the same image on canvas, so the *next*
-      // tap of "Add Page" would just re-save that same image again.
-      // Re-open capture so the user scans a genuinely new physical page.
+      if (!canvas.width && !state.pages.length) {
+        toast("Scan or open a photo first");
+        return;
+      }
+      if (canvas.width) {
+        if (state.currentPageIndex != null) {
+          commitCurrentPage();
+        } else {
+          const cur = getCurrentDataUrl(0.92);
+          const last = state.pages[state.pages.length - 1];
+          if (!last || last.dataUrl !== cur) commitCurrentPage();
+        }
+      }
+      refreshPagesBar();
+      state.currentPageIndex = null;
+      toast("Page saved · " + state.pages.length + " total — capture next");
       $("cameraInput").click();
     });
 
-    // ========== OCR ==========
+// ========== OCR ==========
     async function runOCR() {
       if (!canvas.width) return;
       if (typeof Tesseract === "undefined") {
@@ -3254,28 +3423,22 @@
       }
       const { jsPDF } = api;
 
-      let pages = state.pages.slice();
-      // Always fold in whatever's currently on the canvas as the final
-      // page, so you never have to remember an extra "＋ Page" tap just
-      // to commit the last scan before exporting. If it's the exact same
-      // image as the last page you already added (e.g. you tapped
-      // "＋ Page" and then cancelled the camera), skip it to avoid a
-      // duplicate.
+      // Commit canvas so the last scan is never missing from the PDF
       if (canvas.width) {
         const currentDataUrl = getCurrentDataUrl(0.92);
-        const lastPage = pages[pages.length - 1];
-        if (!lastPage || lastPage.dataUrl !== currentDataUrl) {
-          pages.push({
-            dataUrl: currentDataUrl,
-            width: canvas.width,
-            height: canvas.height
-          });
+        if (state.currentPageIndex != null && state.pages[state.currentPageIndex]) {
+          if (state.pages[state.currentPageIndex].dataUrl !== currentDataUrl) commitCurrentPage();
+        } else if (currentDataUrl) {
+          const lastPage = state.pages[state.pages.length - 1];
+          if (!lastPage || lastPage.dataUrl !== currentDataUrl) commitCurrentPage();
         }
       }
+      const pages = state.pages.slice();
       if (!pages.length) {
-        toast("Nothing to export");
+        toast("Nothing to export — scan a page first");
         return;
       }
+      refreshPagesBar();
 
       showLoading(true);
       $("loadingMsg").textContent = "Building PDF…";
